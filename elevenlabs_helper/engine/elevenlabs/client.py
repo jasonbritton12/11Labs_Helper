@@ -6,6 +6,7 @@ so the request completes without needing webhook/async results.
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 from typing import Callable
@@ -89,7 +90,20 @@ def validate_key(
     if resp.status_code == 200:
         return "valid", "Key verified."
     if resp.status_code in (401, 403):
-        return "invalid", "ElevenLabs rejected this key. Check that you copied it correctly."
+        body = ""
+        try:
+            body = json.dumps(resp.json()).lower()
+        except Exception:
+            body = (resp.text or "").lower()
+        # A definitively bad key reports invalid_api_key — block that.
+        if "invalid_api_key" in body or "could not validate" in body:
+            return "invalid", "ElevenLabs rejected this key. Check that you copied it correctly."
+        # A *scoped* key (e.g. speech-to-text only) authenticates but lacks access to
+        # /v1/user (missing_permissions). That key still works for transcription.
+        if "permission" in body:
+            return "valid", "Key accepted (scoped key — limited to its permitted endpoints)."
+        # Anything else ambiguous: don't block a possibly-working key.
+        return "unverified", "Couldn't fully verify the key here; it will be tried on your first job."
     return "unverified", f"Unexpected response verifying the key (HTTP {resp.status_code})."
 
 

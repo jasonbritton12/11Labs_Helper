@@ -64,10 +64,11 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):  # noqa: N802 - used by validate_key (/v1/user)
+        server = self.server
         if not self.headers.get("xi-api-key"):
             self._send(401, {"detail": "missing key"})
             return
-        self._send(200, {"user_id": "test-user"})
+        self._send(getattr(server, "get_status", 200), getattr(server, "get_body", {"user_id": "test-user"}))
 
     def do_POST(self):  # noqa: N802
         server = self.server
