@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ...engine.config import Deliverable
+from ...engine.config import DELIVERABLE_LABELS, Deliverable
 from ...engine.jobs.models import Job
 
 
@@ -39,12 +39,8 @@ class JobOptionsDialog(QDialog):
 
         root.addWidget(QLabel("Deliverables:"))
         self.deliv_boxes: dict[Deliverable, QCheckBox] = {}
-        _labels = {
-            Deliverable.SRT: "SRT", Deliverable.VTT: "VTT",
-            Deliverable.DOCX: "DOCX", Deliverable.JSON: "JSON",
-        }
         for d in (Deliverable.SRT, Deliverable.VTT, Deliverable.DOCX, Deliverable.JSON):
-            box = QCheckBox(_labels[d])
+            box = QCheckBox(DELIVERABLE_LABELS[d])
             box.setChecked(d in job.deliverables)
             self.deliv_boxes[d] = box
             root.addWidget(box)

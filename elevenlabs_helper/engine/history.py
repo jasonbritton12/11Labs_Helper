@@ -7,6 +7,7 @@ their output files and can drive a free (no-API) re-export. Keyed by job id.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from .config import app_support_dir
@@ -43,3 +44,19 @@ def load_history_file(path: str | Path) -> TranscriptionResult:
 
 def delete_history(job_id: str) -> None:
     history_path(job_id).unlink(missing_ok=True)
+
+
+def prune_history(days: int) -> int:
+    """Delete history JSONs older than ``days`` (by mtime). No-op if days<=0. Returns count."""
+    if days <= 0:
+        return 0
+    cutoff = time.time() - days * 86400
+    removed = 0
+    for f in history_dir().glob("*.json"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+                removed += 1
+        except OSError:
+            pass
+    return removed

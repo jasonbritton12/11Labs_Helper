@@ -306,8 +306,10 @@ class MainWindow(QMainWindow):
         elif job.status not in TERMINAL_STATUSES:  # active (uploading/transcribing/retrying)
             primary = ("Cancel", lambda: self._cancel_job(job.id))
         elif job.status == JobStatus.DONE:
-            primary = ("Re-export", lambda: self._reexport(job.id))
-            menu_items = [("Reveal", lambda: self._reveal(job)),
+            # Reveal is the most common action on a finished job (K1); re-export is
+            # the rarer recovery path, kept a click away in the menu.
+            primary = ("Reveal", lambda: self._reveal(job))
+            menu_items = [("Re-export…", lambda: self._reexport(job.id)),
                           ("Remove from list", lambda: self._remove_job(job.id))]
         else:  # FAILED / CANCELED
             primary = ("Retry", lambda: self.engine.queue.retry(job.id))
@@ -378,6 +380,7 @@ class MainWindow(QMainWindow):
         # only possible via the explicit "Delete permanently" in History (J1).
         self.engine.archive(job_id)
         self._reload_table()
+        self.statusBar().showMessage("Removed from list — still recoverable in History.", 5000)
 
     def _clear_completed(self) -> None:
         for job in self.engine.jobs():

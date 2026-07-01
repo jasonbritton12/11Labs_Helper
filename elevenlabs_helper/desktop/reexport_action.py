@@ -1,4 +1,4 @@
-"""Shared re-export flow: format picker (J2) + overwrite guard (J4) + feedback (J6)."""
+"""Shared re-export flow: format + destination picker (J2/K5) + overwrite guard (J4) + feedback (J6)."""
 
 from __future__ import annotations
 
@@ -13,21 +13,22 @@ from .widgets.reexport_dialog import ReexportDialog
 
 
 def reexport_with_prompt(parent, engine, job: Job) -> dict | None:
-    """Prompt for formats, guard overwrites, re-export from history, and confirm.
+    """Prompt for formats + destination, guard overwrites, re-export from history, confirm.
 
     Returns the artifacts dict on success, or None if canceled/failed.
     """
-    dialog = ReexportDialog(list(job.deliverables), job.source_name, parent)
+    dialog = ReexportDialog(list(job.deliverables), job.source_name, job.output_dir, parent)
     if not dialog.exec():
         return None
     formats = dialog.selected()
     if not formats:
         QMessageBox.information(parent, "Nothing selected", "Choose at least one format.")
         return None
+    out_dir = dialog.out_dir() or job.output_dir
 
     # Overwrite guard (J4): warn if any target file already exists.
     stem = Path(job.source_path).stem
-    existing = [p for p in deliverable_paths(job.output_dir, stem, formats) if p.exists()]
+    existing = [p for p in deliverable_paths(out_dir, stem, formats) if p.exists()]
     if existing:
         names = ", ".join(p.name for p in existing)
         if QMessageBox.question(
@@ -38,7 +39,7 @@ def reexport_with_prompt(parent, engine, job: Job) -> dict | None:
             return None
 
     try:
-        artifacts = engine.reexport(job.id, deliverables=formats)
+        artifacts = engine.reexport(job.id, deliverables=formats, out_dir=out_dir)
     except Exception as exc:  # noqa: BLE001
         QMessageBox.warning(parent, "Re-export failed", str(exc))
         return None
@@ -46,9 +47,9 @@ def reexport_with_prompt(parent, engine, job: Job) -> dict | None:
     # Feedback (J6): confirm with a Reveal affordance.
     choice = QMessageBox.information(
         parent, "Re-exported",
-        f"Wrote {len(artifacts)} file(s) to:\n{job.output_dir}",
+        f"Wrote {len(artifacts)} file(s) to:\n{out_dir}",
         QMessageBox.Open | QMessageBox.Ok, QMessageBox.Ok,
     )
-    if choice == QMessageBox.Open and Path(job.output_dir).exists():
-        subprocess.run(["open", str(job.output_dir)], check=False)
+    if choice == QMessageBox.Open and Path(out_dir).exists():
+        subprocess.run(["open", str(out_dir)], check=False)
     return artifacts

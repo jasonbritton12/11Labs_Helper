@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .config import Deliverable, EngineSettings, output_dir_for
 from .exporters.writer import write_deliverables
-from .history import delete_history, load_history, load_history_file
+from .history import delete_history, load_history, load_history_file, prune_history
 from .jobs.models import Job
 from .jobs.queue import JobQueue, UpdateCallback
 from .jobs.store import JobStore
@@ -61,6 +61,7 @@ class Engine:
         self.queue = JobQueue(
             self.store, self.settings, base_url=base_url, on_update=on_update
         )
+        prune_history(self.settings.history_retention_days)  # data-minimization (SSR-011)
 
     def start(self) -> None:
         self.queue.start()
@@ -82,9 +83,9 @@ class Engine:
         """Active (non-archived) jobs for the main queue view."""
         return self.store.list_jobs(archived=False, limit=500)
 
-    def all_jobs(self) -> list[Job]:
+    def all_jobs(self, limit: int | None = 1000) -> list[Job]:
         """Every job we still retain — for the History / recovery view."""
-        return self.store.list_jobs()
+        return self.store.list_jobs(limit=limit)
 
     def archive(self, job_id: str) -> None:
         """Hide a finished job from the main list but KEEP its history for re-export."""
@@ -93,13 +94,24 @@ class Engine:
             job.archived = True
             self.store.upsert(job)
 
+    def requeue(self, job_id: str) -> None:
+        """Un-archive and re-queue a job (used to retry a failed job from History)."""
+        job = self.store.get(job_id)
+        if job is not None:
+            job.archived = False
+            self.store.upsert(job)
+        self.queue.retry(job_id)
+
     def delete_permanently(self, job_id: str) -> None:
         """The only path that discards the recovery JSON — used from the History view."""
         delete_history(job_id)
         self.store.delete(job_id)
 
     def reexport(
-        self, job_id: str, deliverables: list[Deliverable] | None = None
+        self,
+        job_id: str,
+        deliverables: list[Deliverable] | None = None,
+        out_dir: str | Path | None = None,
     ) -> dict[str, Path]:
         """Regenerate a job's deliverables from the app-history JSON — no API cost.
 
@@ -128,9 +140,10 @@ class Engine:
                 "so re-export isn't possible without re-transcribing."
             )
 
-        wanted = deliverables if deliverables is not None else list(job.deliverables)
+        wanted = deliverables if deliverables else list(job.deliverables)  # empty falls back
+        target = str(out_dir) if out_dir else job.output_dir
         artifacts = write_deliverables(
-            result, job.output_dir, Path(job.source_path).stem, wanted
+            result, target, Path(job.source_path).stem, wanted
         )
         for kind, path in artifacts.items():
             job.artifacts[kind] = str(path)

@@ -78,6 +78,59 @@ def test_delete_permanently_removes_record_and_history(tmp_path, dummy_mp3, mock
     store.close()
 
 
+def test_reexport_empty_formats_falls_back_to_job_defaults(tmp_path, dummy_mp3, mock_elevenlabs):
+    settings, store, job = _run_one(tmp_path, dummy_mp3, mock_elevenlabs)  # SRT+VTT
+    (Path(job.output_dir) / "sample.srt").unlink()
+    engine = Engine(settings=settings, store=store, base_url=mock_elevenlabs.base_url)
+    arts = engine.reexport(job.id, deliverables=[])   # empty -> use the job's formats
+    assert set(arts) == {"srt", "vtt"}
+    store.close()
+
+
+def test_reexport_to_alternate_directory(tmp_path, dummy_mp3, mock_elevenlabs):
+    settings, store, job = _run_one(tmp_path, dummy_mp3, mock_elevenlabs)
+    engine = Engine(settings=settings, store=store, base_url=mock_elevenlabs.base_url)
+    alt = tmp_path / "elsewhere"
+    engine.reexport(job.id, out_dir=alt)
+    assert (alt / "sample.srt").exists()
+    store.close()
+
+
+def test_requeue_unarchives_and_queues(tmp_path, dummy_mp3, mock_elevenlabs):
+    settings = EngineSettings()
+    settings.output_root = tmp_path / "out"
+    store = JobStore(db_path=tmp_path / "jobs.db")
+    job = make_job(dummy_mp3, settings)
+    job.status = JobStatus.FAILED
+    job.archived = True
+    store.upsert(job)
+
+    engine = Engine(settings=settings, store=store, base_url=mock_elevenlabs.base_url)
+    engine.requeue(job.id)   # worker not started; just checks state transition
+    saved = store.get(job.id)
+    assert saved.archived is False
+    assert saved.status == JobStatus.QUEUED
+    store.close()
+
+
+def test_prune_history_removes_old_files_only(tmp_path):
+    import os
+    import time as _time
+
+    from elevenlabs_helper.engine.history import history_dir, prune_history
+
+    old = history_dir() / "old.json"
+    old.write_text("{}")
+    stamp = _time.time() - 40 * 86400
+    os.utime(old, (stamp, stamp))
+    new = history_dir() / "new.json"
+    new.write_text("{}")
+
+    assert prune_history(30) == 1          # only the 40-day-old file
+    assert not old.exists() and new.exists()
+    assert prune_history(0) == 0 and new.exists()   # 0 == keep forever
+
+
 def test_reexport_without_history_errors(tmp_path, dummy_mp3, mock_elevenlabs):
     settings = EngineSettings()
     settings.output_root = tmp_path / "out"

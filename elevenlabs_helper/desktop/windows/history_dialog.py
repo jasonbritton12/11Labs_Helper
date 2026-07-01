@@ -5,20 +5,23 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from ...engine.jobs.models import Job
+from ...engine.jobs.models import Job, JobStatus
 from ..reexport_action import reexport_with_prompt
 
 _COLUMNS = ["File", "Date", "Status", "Actions"]
@@ -29,14 +32,28 @@ class HistoryDialog(QDialog):
         super().__init__(parent)
         self.engine = engine
         self.setWindowTitle("Transcript History")
-        self.resize(720, 460)
+        self.resize(740, 480)
         root = QVBoxLayout(self)
+
+        intro = QLabel(
+            "All transcripts you've made, including ones cleared from the main list. "
+            "Re-export any of them for free, or delete them permanently."
+        )
+        intro.setWordWrap(True)
+        root.addWidget(intro)
 
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search by file name…")
-        self.search.textChanged.connect(self._reload)
+        # Debounce so we don't rebuild the whole table on every keystroke (SER-021).
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(200)
+        self._debounce.timeout.connect(self._reload)
+        self.search.textChanged.connect(lambda: self._debounce.start())
         root.addWidget(self.search)
 
+        # Stack: table when there are results, an empty-state message otherwise.
+        self.stack = QStackedWidget()
         self.table = QTableWidget(0, len(_COLUMNS))
         self.table.setHorizontalHeaderLabels(_COLUMNS)
         self.table.verticalHeader().setVisible(False)
@@ -45,7 +62,12 @@ class HistoryDialog(QDialog):
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         for i in range(1, len(_COLUMNS)):
             header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
-        root.addWidget(self.table)
+        self.empty = QLabel("No transcripts yet.\nTranscribe a file and it will appear here.")
+        self.empty.setAlignment(Qt.AlignCenter)
+        self.empty.setStyleSheet("color: gray;")
+        self.stack.addWidget(self.table)
+        self.stack.addWidget(self.empty)
+        root.addWidget(self.stack)
 
         self._reload()
 
@@ -57,8 +79,16 @@ class HistoryDialog(QDialog):
         return list(reversed(jobs))  # newest first for browsing
 
     def _reload(self) -> None:
+        jobs = self._matching_jobs()
+        self.stack.setCurrentWidget(self.table if jobs else self.empty)
+        if not jobs:
+            no_search = not self.search.text().strip()
+            self.empty.setText(
+                "No transcripts yet.\nTranscribe a file and it will appear here."
+                if no_search else "No transcripts match your search."
+            )
         self.table.setRowCount(0)
-        for job in self._matching_jobs():
+        for job in jobs:
             self._add_row(job)
 
     def _add_row(self, job: Job) -> None:
@@ -75,13 +105,19 @@ class HistoryDialog(QDialog):
         lay.setContentsMargins(2, 2, 2, 2)
         lay.setSpacing(4)
 
-        has_history = bool(job.history_json and Path(job.history_json).exists())
-        reexport = QPushButton("Re-export")
-        reexport.setEnabled(has_history)
-        reexport.setToolTip("Regenerate deliverables — no API cost" if has_history
-                            else "No saved transcript to re-export from")
-        reexport.clicked.connect(lambda: self._reexport(job.id))
-        lay.addWidget(reexport)
+        if job.status == JobStatus.DONE:
+            has_history = bool(job.history_json and Path(job.history_json).exists())
+            reexport = QPushButton("Re-export…")
+            reexport.setEnabled(has_history)
+            reexport.setToolTip("Regenerate deliverables — no API cost" if has_history
+                                else "No saved transcript to re-export from")
+            reexport.clicked.connect(lambda: self._reexport(job.id))
+            lay.addWidget(reexport)
+        elif job.status == JobStatus.FAILED:
+            requeue = QPushButton("Requeue")
+            requeue.setToolTip("Try transcribing again (uses credits)")
+            requeue.clicked.connect(lambda: self._requeue(job.id))
+            lay.addWidget(requeue)
 
         reveal = QPushButton("Reveal")
         reveal.clicked.connect(lambda: self._reveal(job))
@@ -98,6 +134,11 @@ class HistoryDialog(QDialog):
         job = self.engine.store.get(job_id)
         if job is not None:
             reexport_with_prompt(self, self.engine, job)
+
+    def _requeue(self, job_id: str) -> None:
+        self.engine.requeue(job_id)
+        QMessageBox.information(self, "Requeued", "The job was re-queued for transcription.")
+        self._reload()
 
     def _reveal(self, job: Job) -> None:
         target = Path(job.output_dir)

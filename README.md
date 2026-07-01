@@ -68,8 +68,10 @@ read `ELEVENLABS_API_KEY` instead.
 - **Transcript history:** the canonical JSON is also kept **silently in the app
   history space** (`~/Library/Application Support/ElevenLabsHelper/history/`),
   separate from your outputs, so you can **re-export deliverables for free (no API
-  cost)** if you delete/move them. Turn off via **Settings → Keep transcript
-  history** for zero local retention (disables re-export).
+  cost)** if you delete/move them. **Retention default: kept until you delete it**
+  (Remove/Clear only hide from the list). For data-minimization, set **Settings →
+  Auto-delete history after N days**, or turn off **Keep transcript history**
+  entirely (zero local retention; disables re-export).
 - **Re-export & recovery:** completed jobs have a **Re-export** button (pick which
   formats to regenerate — no API cost). **Remove**/**Clear completed** only *archive*
   a job (hide it from the list) — they **keep** the recovery copy. Use **History…**

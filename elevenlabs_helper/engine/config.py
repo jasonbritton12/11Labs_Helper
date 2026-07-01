@@ -34,6 +34,14 @@ DEFAULT_DELIVERABLES: tuple[Deliverable, ...] = (
     Deliverable.VTT,
 )
 
+# Single source of truth for deliverable display labels (used by all dialogs).
+DELIVERABLE_LABELS: dict[Deliverable, str] = {
+    Deliverable.SRT: "SRT",
+    Deliverable.VTT: "VTT",
+    Deliverable.DOCX: "DOCX",
+    Deliverable.JSON: "JSON",
+}
+
 APP_NAME = "ElevenLabsHelper"
 DEFAULT_STT_MODEL = "scribe_v2"
 
@@ -87,6 +95,9 @@ class EngineSettings(BaseModel):
     # user's output folder) so deliverables can be re-exported for free if the user
     # deletes/moves their outputs. Turn off for zero local retention.
     keep_history_json: bool = True
+    # Auto-delete history JSONs older than N days (0 = keep forever). Data-minimization
+    # option for privacy-sensitive users (SSR-011).
+    history_retention_days: int = 0
     max_retries: int = 4
     retry_base_delay_secs: float = 2.0
 

@@ -15,19 +15,13 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
-from ...engine.config import Deliverable, EngineSettings
+from ...engine.config import DELIVERABLE_LABELS, Deliverable, EngineSettings
 from ...engine.history import history_dir
-
-_DELIV_LABELS = {
-    Deliverable.SRT: "SRT",
-    Deliverable.VTT: "VTT",
-    Deliverable.DOCX: "DOCX",
-    Deliverable.JSON: "JSON",
-}
 
 
 class SettingsDialog(QDialog):
@@ -43,7 +37,7 @@ class SettingsDialog(QDialog):
         deliv_layout = QVBoxLayout(deliv_group)
         self.deliv_boxes: dict[Deliverable, QCheckBox] = {}
         for d in (Deliverable.SRT, Deliverable.VTT, Deliverable.DOCX, Deliverable.JSON):
-            box = QCheckBox(_DELIV_LABELS[d])
+            box = QCheckBox(DELIVERABLE_LABELS[d])
             box.setChecked(d in settings.deliverables)
             self.deliv_boxes[d] = box
             deliv_layout.addWidget(box)
@@ -82,6 +76,19 @@ class SettingsDialog(QDialog):
         self.keep_history.setChecked(settings.keep_history_json)
         store_layout.addWidget(self.keep_history)
 
+        expiry_row = QWidget()
+        expiry_layout = QHBoxLayout(expiry_row)
+        expiry_layout.setContentsMargins(0, 0, 0, 0)
+        expiry_layout.addWidget(QLabel("Auto-delete history after"))
+        self.retention = QSpinBox()
+        self.retention.setRange(0, 3650)
+        self.retention.setSpecialValueText("never")  # shown when value == 0
+        self.retention.setSuffix(" days")
+        self.retention.setValue(settings.history_retention_days)
+        expiry_layout.addWidget(self.retention)
+        expiry_layout.addStretch()
+        store_layout.addWidget(expiry_row)
+
         note = QLabel(
             "A copy of each transcript's JSON is kept privately here — separate from "
             "your output files — so you can re-export deliverables without re-transcribing. "
@@ -115,5 +122,6 @@ class SettingsDialog(QDialog):
         if self.auto_lang.isChecked():
             self.settings.transcription.language_code = None
         self.settings.keep_history_json = self.keep_history.isChecked()
+        self.settings.history_retention_days = self.retention.value()
         self.settings.save()
         self.accept()
