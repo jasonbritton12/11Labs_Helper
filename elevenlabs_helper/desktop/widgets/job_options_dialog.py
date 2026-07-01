@@ -39,8 +39,12 @@ class JobOptionsDialog(QDialog):
 
         root.addWidget(QLabel("Deliverables:"))
         self.deliv_boxes: dict[Deliverable, QCheckBox] = {}
-        for d in (Deliverable.SRT, Deliverable.VTT, Deliverable.DOCX):
-            box = QCheckBox(d.value.upper())
+        _labels = {
+            Deliverable.SRT: "SRT", Deliverable.VTT: "VTT",
+            Deliverable.DOCX: "DOCX", Deliverable.JSON: "JSON",
+        }
+        for d in (Deliverable.SRT, Deliverable.VTT, Deliverable.DOCX, Deliverable.JSON):
+            box = QCheckBox(_labels[d])
             box.setChecked(d in job.deliverables)
             self.deliv_boxes[d] = box
             root.addWidget(box)

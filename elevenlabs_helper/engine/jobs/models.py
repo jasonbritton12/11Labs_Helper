@@ -49,6 +49,8 @@ class Job(BaseModel):
     acknowledged_oversize: bool = False
 
     artifacts: dict[str, str] = Field(default_factory=dict)  # type -> path
+    history_json: str | None = None  # app-space canonical JSON path (for re-export)
+    archived: bool = False  # hidden from the main queue list but kept for re-export
 
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)

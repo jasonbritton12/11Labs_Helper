@@ -58,12 +58,18 @@ def test_audio_event_cue_has_no_speaker_and_no_dash():
     assert "- bye" not in out
 
 
-def test_writer_emits_selected_plus_raw_json(tmp_path):
+def test_writer_emits_only_selected(tmp_path):
     artifacts = write_deliverables(
-        _result(), tmp_path, "clip", [Deliverable.SRT, Deliverable.VTT, Deliverable.DOCX]
+        _result(), tmp_path, "clip", [Deliverable.SRT, Deliverable.VTT]
     )
     assert (tmp_path / "clip.srt").exists()
     assert (tmp_path / "clip.vtt").exists()
-    assert (tmp_path / "clip.docx").exists()
-    assert (tmp_path / "clip.raw.json").exists()  # always written
-    assert set(artifacts) == {"srt", "vtt", "docx", "json"}
+    assert not (tmp_path / "clip.docx").exists()
+    assert not (tmp_path / "clip.json").exists()   # JSON only when explicitly selected
+    assert set(artifacts) == {"srt", "vtt"}
+
+
+def test_writer_json_copy_when_selected(tmp_path):
+    artifacts = write_deliverables(_result(), tmp_path, "clip", [Deliverable.JSON])
+    assert (tmp_path / "clip.json").exists()
+    assert set(artifacts) == {"json"}

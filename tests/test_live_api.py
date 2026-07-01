@@ -42,8 +42,9 @@ def test_live_transcription(tmp_path):
 
     out = Path(job.output_dir)
     assert (out / f"{Path(LIVE_FILE).stem}.srt").exists()
-    assert (out / f"{Path(LIVE_FILE).stem}.raw.json").exists()
-    raw = (out / f"{Path(LIVE_FILE).stem}.raw.json").read_text()
+    # Canonical JSON is kept in the app history space (not next to the outputs).
+    assert job.history_json and Path(job.history_json).exists()
+    raw = Path(job.history_json).read_text()
     assert '"words"' in raw and len(raw) > 50
     print("\nDetected text (first 200 chars):")
     import json

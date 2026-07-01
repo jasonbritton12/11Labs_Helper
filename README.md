@@ -62,13 +62,22 @@ read `ELEVENLABS_API_KEY` instead.
   for model training before sending regulated content).
 - Transcripts are **AI-generated and may contain errors** — verify before relying
   on them. DOCX deliverables carry an "AI-generated" disclosure line.
-- Transcripts (`*.srt/.vtt/.docx`, and `*.raw.json` when enabled) are written to
-  disk **in cleartext** in the per-source output folder. For sensitive/regulated
-  content, keep output on a **FileVault**-encrypted volume; retention is yours to
-  manage. The verbose `raw.json` can be disabled in **Settings → Keep raw JSON**.
-- The app writes a redacted local audit log (`~/Library/Application Support/
-  ElevenLabsHelper/logs/`) of job lifecycle + upload destination host — never the
-  API key or transcript content.
+- **Deliverables** you choose (SRT/VTT/DOCX, and optionally a JSON copy) are
+  written **in cleartext** to your output folder (defaults: **SRT + VTT**). For
+  sensitive content keep output on a **FileVault**-encrypted volume.
+- **Transcript history:** the canonical JSON is also kept **silently in the app
+  history space** (`~/Library/Application Support/ElevenLabsHelper/history/`),
+  separate from your outputs, so you can **re-export deliverables for free (no API
+  cost)** if you delete/move them. Turn off via **Settings → Keep transcript
+  history** for zero local retention (disables re-export).
+- **Re-export & recovery:** completed jobs have a **Re-export** button (pick which
+  formats to regenerate — no API cost). **Remove**/**Clear completed** only *archive*
+  a job (hide it from the list) — they **keep** the recovery copy. Use **History…**
+  to search past transcripts, re-export, or **Delete permanently** (the only action
+  that discards the recovery copy). CLI equivalents: `elevenlabs-helper history` and
+  `elevenlabs-helper reexport <job-id-or-json> [--formats …]`.
+- The app writes a redacted local audit log (`…/ElevenLabsHelper/logs/`) of job
+  lifecycle + upload destination host — never the API key or transcript content.
 
 ## Develop / run
 

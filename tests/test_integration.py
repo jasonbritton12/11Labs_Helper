@@ -52,8 +52,11 @@ def test_full_pipeline_and_persistence(tmp_path, dummy_mp3, mock_elevenlabs):
     out_dir = Path(saved.output_dir)
     assert (out_dir / "sample.srt").exists()
     assert (out_dir / "sample.vtt").exists()
-    assert (out_dir / "sample.docx").exists()
-    assert (out_dir / "sample.raw.json").exists()
+    assert not (out_dir / "sample.docx").exists()   # DOCX no longer a default
+    assert not (out_dir / "sample.json").exists()    # JSON copy not written unless selected
+    # Canonical JSON is kept in the app history space (not next to the outputs).
+    from elevenlabs_helper.engine.history import history_path
+    assert saved.history_json and history_path(saved.id).exists()
 
     # Persistence across "restart": reopen the DB.
     store.close()

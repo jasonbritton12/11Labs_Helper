@@ -32,6 +32,13 @@ def _have_ffmpeg() -> bool:
 requires_ffmpeg = pytest.mark.skipif(not _have_ffmpeg(), reason="ffmpeg not installed")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_app_dir(tmp_path_factory, monkeypatch):
+    """Redirect HOME so app_support_dir() (history, logs, settings) is per-test and
+    never touches the real user directory."""
+    monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))
+
+
 @pytest.fixture
 def dummy_mp3(tmp_path) -> str:
     """A .mp3 file with arbitrary bytes — fine for upload-path tests (mock doesn't decode).

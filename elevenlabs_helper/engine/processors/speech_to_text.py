@@ -11,6 +11,7 @@ from pathlib import Path
 
 from ..elevenlabs.client import TransferCanceled, transcribe_file
 from ..exporters.writer import write_deliverables
+from ..history import save_history
 from ..jobs.models import Job, JobStatus
 from ..media.inspect import inspect, limit_warnings
 from .base import ProcessContext, Processor
@@ -83,12 +84,19 @@ class SpeechToTextProcessor(Processor):
         if ctx.canceled:
             raise CanceledError()
 
-        # 4. Export deliverables (disk/permission errors are permanent, not retried).
+        # 4. Silently keep the canonical JSON in the app history space (for free
+        #    re-export later), separate from the user's output folder.
+        if ctx.settings.keep_history_json:
+            try:
+                job.history_json = str(save_history(result, job.id))
+            except Exception:
+                pass  # history is a best-effort safety net; never fail the job for it
+
+        # 5. Export the user-selected deliverables (disk errors are permanent).
         step(JobStatus.EXPORTING, 0.9, "Writing deliverables")
         try:
             artifacts = write_deliverables(
-                result, job.output_dir, source.stem, job.deliverables,
-                keep_raw_json=ctx.settings.keep_raw_json,
+                result, job.output_dir, source.stem, job.deliverables
             )
         except Exception as exc:  # export is deterministic — never re-upload/re-bill on failure
             raise PermanentJobError(

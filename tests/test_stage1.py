@@ -112,12 +112,12 @@ def test_pause_holds_jobs_then_resume_processes(tmp_path, dummy_mp3, mock_eleven
     store.close()
 
 
-# --- SSR-003: raw-json opt-out ----------------------------------------------
-def test_keep_raw_json_false_skips_raw(tmp_path):
+# --- Deliverables are opt-in; no JSON in the output folder unless selected ---
+def test_writer_no_json_unless_selected(tmp_path):
     from elevenlabs_helper.engine.elevenlabs.models import TranscriptionResult
 
     result = TranscriptionResult.model_validate(CANNED_RESULT)
-    arts = write_deliverables(result, tmp_path, "clip", [Deliverable.SRT], keep_raw_json=False)
+    arts = write_deliverables(result, tmp_path, "clip", [Deliverable.SRT])
     assert "json" not in arts
-    assert not (tmp_path / "clip.raw.json").exists()
+    assert not (tmp_path / "clip.json").exists()
     assert (tmp_path / "clip.srt").exists()

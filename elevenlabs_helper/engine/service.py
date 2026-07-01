@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .config import EngineSettings, output_dir_for
+from .config import Deliverable, EngineSettings, output_dir_for
+from .exporters.writer import write_deliverables
+from .history import delete_history, load_history, load_history_file
 from .jobs.models import Job
 from .jobs.queue import JobQueue, UpdateCallback
 from .jobs.store import JobStore
 from .media.inspect import inspect, limit_warnings
+
+
+class ReexportError(RuntimeError):
+    """Raised when a job's canonical JSON can't be found for re-export."""
 
 
 def make_job(source: str | Path, settings: EngineSettings) -> Job:
@@ -73,4 +79,60 @@ class Engine:
         return job
 
     def jobs(self) -> list[Job]:
+        """Active (non-archived) jobs for the main queue view."""
+        return self.store.list_jobs(archived=False, limit=500)
+
+    def all_jobs(self) -> list[Job]:
+        """Every job we still retain — for the History / recovery view."""
         return self.store.list_jobs()
+
+    def archive(self, job_id: str) -> None:
+        """Hide a finished job from the main list but KEEP its history for re-export."""
+        job = self.store.get(job_id)
+        if job is not None:
+            job.archived = True
+            self.store.upsert(job)
+
+    def delete_permanently(self, job_id: str) -> None:
+        """The only path that discards the recovery JSON — used from the History view."""
+        delete_history(job_id)
+        self.store.delete(job_id)
+
+    def reexport(
+        self, job_id: str, deliverables: list[Deliverable] | None = None
+    ) -> dict[str, Path]:
+        """Regenerate a job's deliverables from the app-history JSON — no API cost.
+
+        Uses the job's saved history JSON (falling back to a legacy raw.json in the
+        output folder). Writes into the job's output folder and updates its artifacts.
+        """
+        job = self.store.get(job_id)
+        if job is None:
+            raise ReexportError(f"No such job: {job_id}")
+
+        result = None
+        if job.history_json and Path(job.history_json).exists():
+            result = load_history_file(job.history_json)
+        if result is None:
+            result = load_history(job_id)
+        if result is None:  # legacy: raw.json used to live next to the outputs
+            for name in (f"{Path(job.source_path).stem}.raw.json",
+                         f"{Path(job.source_path).stem}.json"):
+                legacy = Path(job.output_dir) / name
+                if legacy.exists():
+                    result = load_history_file(legacy)
+                    break
+        if result is None:
+            raise ReexportError(
+                "No stored transcript found for this job — history retention was off, "
+                "so re-export isn't possible without re-transcribing."
+            )
+
+        wanted = deliverables if deliverables is not None else list(job.deliverables)
+        artifacts = write_deliverables(
+            result, job.output_dir, Path(job.source_path).stem, wanted
+        )
+        for kind, path in artifacts.items():
+            job.artifacts[kind] = str(path)
+        self.store.upsert(job)
+        return artifacts

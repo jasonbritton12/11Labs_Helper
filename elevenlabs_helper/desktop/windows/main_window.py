@@ -14,11 +14,13 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -29,10 +31,12 @@ from ...engine.jobs.models import TERMINAL_STATUSES, Job, JobStatus
 from ...engine.media.inspect import human_duration, human_size, inspect, limit_warnings
 from ...engine.service import Engine
 from ..bridge import EngineBridge
+from ..reexport_action import reexport_with_prompt
 from ..widgets.drop_area import DropArea
 from ..widgets.job_options_dialog import JobOptionsDialog
 from ..widgets.key_dialog import KeyDialog
 from ..widgets.settings_dialog import SettingsDialog
+from .history_dialog import HistoryDialog
 
 _COLUMNS = ["File", "Status", "Progress", "Size / Duration", "Actions"]
 _BUSY_STATUSES = {JobStatus.UPLOADING, JobStatus.TRANSCRIBING}
@@ -61,6 +65,9 @@ class MainWindow(QMainWindow):
         settings_btn.clicked.connect(self._open_settings)
         key_btn = QPushButton("API Key")
         key_btn.clicked.connect(self._open_key)
+        history_btn = QPushButton("History…")
+        history_btn.setToolTip("Browse & recover past transcripts (re-export for free)")
+        history_btn.clicked.connect(self._open_history)
         clear_btn = QPushButton("Clear completed")
         clear_btn.clicked.connect(self._clear_completed)
         self.pause_btn = QPushButton("Pause")
@@ -71,6 +78,7 @@ class MainWindow(QMainWindow):
         topbar.addWidget(key_btn)
         topbar.addWidget(self.pause_btn)
         topbar.addStretch()
+        topbar.addWidget(history_btn)
         topbar.addWidget(clear_btn)
         layout.addLayout(topbar)
 
@@ -213,7 +221,7 @@ class MainWindow(QMainWindow):
         self._rows.clear()
         self._busy_since.clear()
         self._busy_base.clear()
-        for job in self.engine.store.list_jobs(limit=500):  # cap the rendered history
+        for job in self.engine.jobs():  # active (non-archived) jobs only
             self._render_job(job)
 
     def _render_job(self, job: Job) -> None:
@@ -284,46 +292,72 @@ class MainWindow(QMainWindow):
         self.table.setCellWidget(row, 4, self._actions(job))
 
     def _actions(self, job: Job) -> QWidget:
+        """One primary action inline + a ⋯ menu for the rest (J5)."""
         w = QWidget()
         lay = QHBoxLayout(w)
         lay.setContentsMargins(2, 2, 2, 2)
         lay.setSpacing(4)
 
+        primary: tuple[str, object] | None = None
+        menu_items: list[tuple[str, object]] = []
         if job.status == JobStatus.QUEUED:
-            options = QPushButton("Options")
-            options.clicked.connect(lambda: self._open_job_options(job.id))
-            lay.addWidget(options)
-        if job.status in TERMINAL_STATUSES:
-            reveal = QPushButton("Reveal")
-            reveal.clicked.connect(lambda: self._reveal(job))
-            lay.addWidget(reveal)
-        if job.status in (JobStatus.FAILED, JobStatus.CANCELED):
-            retry = QPushButton("Retry")
-            retry.clicked.connect(lambda: self.engine.queue.retry(job.id))
-            lay.addWidget(retry)
-        if job.status in TERMINAL_STATUSES:
-            remove = QPushButton("Remove")
-            remove.clicked.connect(lambda: self._remove_job(job.id))
-            lay.addWidget(remove)
-        if job.status not in TERMINAL_STATUSES:
-            cancel = QPushButton("Cancel")
-            cancel.clicked.connect(lambda: self._cancel_job(job.id, cancel))
-            lay.addWidget(cancel)
+            primary = ("Options", lambda: self._open_job_options(job.id))
+            menu_items = [("Cancel", lambda: self._cancel_job(job.id))]
+        elif job.status not in TERMINAL_STATUSES:  # active (uploading/transcribing/retrying)
+            primary = ("Cancel", lambda: self._cancel_job(job.id))
+        elif job.status == JobStatus.DONE:
+            primary = ("Re-export", lambda: self._reexport(job.id))
+            menu_items = [("Reveal", lambda: self._reveal(job)),
+                          ("Remove from list", lambda: self._remove_job(job.id))]
+        else:  # FAILED / CANCELED
+            primary = ("Retry", lambda: self.engine.queue.retry(job.id))
+            menu_items = [("Reveal", lambda: self._reveal(job)),
+                          ("Remove from list", lambda: self._remove_job(job.id))]
+
+        if primary:
+            btn = QPushButton(primary[0])
+            if primary[0] == "Re-export":
+                btn.setToolTip("Regenerate deliverables from saved history — no API cost")
+            btn.clicked.connect(primary[1])
+            lay.addWidget(btn)
+        if menu_items:
+            lay.addWidget(self._menu_button(menu_items))
         lay.addStretch()
         return w
 
+    def _menu_button(self, items: list[tuple[str, object]]) -> QToolButton:
+        btn = QToolButton()
+        btn.setText("⋯")
+        btn.setToolTip("More actions")
+        btn.setPopupMode(QToolButton.InstantPopup)
+        menu = QMenu(btn)
+        for label, cb in items:
+            menu.addAction(label, cb)
+        btn.setMenu(menu)
+        return btn
+
     # --- row actions ---------------------------------------------------------
-    def _cancel_job(self, job_id: str, button: QPushButton) -> None:
-        # Instant acknowledgment (F5): the engine can only act at step boundaries,
-        # so reflect intent immediately rather than appearing frozen.
-        button.setEnabled(False)
-        button.setText("Canceling…")
+    def _cancel_job(self, job_id: str) -> None:
+        # Instant acknowledgment (F5): reflect intent in the status cell immediately,
+        # since the engine can only act at step boundaries.
         row = self._rows.get(job_id)
         if row is not None:
             item = self.table.item(row, 1)
             if item is not None:
                 item.setText("Canceling…")
         self.engine.queue.cancel(job_id)
+
+    def _reexport(self, job_id: str) -> None:
+        job = self.engine.store.get(job_id)
+        if job is None:
+            return
+        if reexport_with_prompt(self, self.engine, job):
+            fresh = self.engine.store.get(job_id)
+            if fresh:
+                self._render_job(fresh)
+                row = self._rows.get(job_id)
+                if row is not None:
+                    self.table.selectRow(row)
 
     def _open_job_options(self, job_id: str) -> None:
         job = self.engine.store.get(job_id)
@@ -340,14 +374,23 @@ class MainWindow(QMainWindow):
             self._render_job(dialog.job)
 
     def _remove_job(self, job_id: str) -> None:
-        self.engine.store.delete(job_id)
+        # Archive (hide from the list) but KEEP the recovery history — deletion is
+        # only possible via the explicit "Delete permanently" in History (J1).
+        self.engine.archive(job_id)
         self._reload_table()
 
     def _clear_completed(self) -> None:
         for job in self.engine.jobs():
             if job.status in TERMINAL_STATUSES:
-                self.engine.store.delete(job.id)
+                self.engine.archive(job.id)
         self._reload_table()
+        self.statusBar().showMessage(
+            "Cleared from the list. Recover any transcript from History.", 5000
+        )
+
+    def _open_history(self) -> None:
+        HistoryDialog(self.engine, self).exec()
+        self._reload_table()  # a job may have been permanently deleted
 
     def _reveal(self, job: Job) -> None:
         target = Path(job.output_dir)

@@ -26,11 +26,12 @@ class Deliverable(str, Enum):
     JSON = "json"          # raw/canonical; internal by default, exposable later
 
 
-# Default user-facing deliverables for V1.
+# Default user-facing deliverables. (DOCX and JSON are opt-in; the canonical JSON
+# is always kept in the app history space — see keep_history_json — so JSON here is
+# only an extra user-facing copy in the output folder.)
 DEFAULT_DELIVERABLES: tuple[Deliverable, ...] = (
     Deliverable.SRT,
     Deliverable.VTT,
-    Deliverable.DOCX,
 )
 
 APP_NAME = "ElevenLabsHelper"
@@ -82,7 +83,10 @@ class EngineSettings(BaseModel):
     output_root: Path | None = None  # None => write alongside each source file
     deliverables: list[Deliverable] = Field(default_factory=lambda: list(DEFAULT_DELIVERABLES))
     transcription: TranscriptionParams = Field(default_factory=TranscriptionParams)
-    keep_raw_json: bool = True  # write <stem>.raw.json (full word-level data) to disk
+    # Silently keep the canonical transcript JSON in the app history space (NOT the
+    # user's output folder) so deliverables can be re-exported for free if the user
+    # deletes/moves their outputs. Turn off for zero local retention.
+    keep_history_json: bool = True
     max_retries: int = 4
     retry_base_delay_secs: float = 2.0
 

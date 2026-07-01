@@ -14,7 +14,8 @@ import sys
 from pathlib import Path
 
 from .auth import MissingApiKeyError, get_api_key
-from .config import Deliverable, EngineSettings
+from .config import DEFAULT_DELIVERABLES, Deliverable, EngineSettings
+from .exporters.writer import write_deliverables
 from .jobs.models import Job, JobStatus
 from .media.inspect import human_duration, human_size, inspect, limit_warnings
 from .processors.base import ProcessContext
@@ -85,6 +86,44 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
     return exit_code
 
 
+def cmd_history(args: argparse.Namespace) -> int:
+    from .service import Engine
+
+    engine = Engine()
+    for job in engine.jobs():
+        has_hist = bool(job.history_json and Path(job.history_json).exists())
+        print(f"{job.id}  {job.status.value:10s}  history={'yes' if has_hist else 'no '}  {job.source_name}")
+    return 0
+
+
+def cmd_reexport(args: argparse.Namespace) -> int:
+    from .config import Deliverable
+    from .history import load_history_file
+    from .service import Engine, ReexportError
+
+    formats = None
+    if args.formats:
+        formats = [Deliverable(f.strip()) for f in args.formats.split(",") if f.strip()]
+
+    target = args.target
+    if Path(target).exists():
+        # Path mode: re-export directly from a JSON file (history or a saved copy).
+        result = load_history_file(target)
+        out_dir = Path(args.out) if args.out else Path(target).parent
+        stem = Path(target).name.split(".")[0]
+        arts = write_deliverables(result, out_dir, stem, formats or list(DEFAULT_DELIVERABLES))
+    else:
+        # Job-id mode: look the job up in the app history store.
+        try:
+            arts = Engine().reexport(target, deliverables=formats)
+        except ReexportError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+    for kind, path in sorted(arts.items()):
+        print(f"  {kind}: {path}")
+    return 0
+
+
 def cmd_inspect(args: argparse.Namespace) -> int:
     for source in args.inputs:
         try:
@@ -118,6 +157,15 @@ def build_parser() -> argparse.ArgumentParser:
     e = sub.add_parser("inspect", help="Show file size/duration and any limit warnings")
     e.add_argument("inputs", nargs="+")
     e.set_defaults(func=cmd_inspect)
+
+    h = sub.add_parser("history", help="List past jobs and whether re-export is available")
+    h.set_defaults(func=cmd_history)
+
+    r = sub.add_parser("reexport", help="Regenerate deliverables from saved JSON (no API cost)")
+    r.add_argument("target", help="A job id (from `history`) or a path to a transcript .json")
+    r.add_argument("--out", help="Output dir (path mode; default: alongside the JSON)")
+    r.add_argument("--formats", help="Comma list: srt,vtt,docx,json (default: job's / SRT+VTT)")
+    r.set_defaults(func=cmd_reexport)
     return parser
 
 
