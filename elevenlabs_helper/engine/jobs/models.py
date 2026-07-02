@@ -12,6 +12,7 @@ from ..config import Deliverable, TranscriptionParams
 
 
 class JobStatus(str, Enum):
+    STAGED = "staged"        # added but not yet run — nothing hits the API until "Run"
     QUEUED = "queued"
     UPLOADING = "uploading"
     TRANSCRIBING = "transcribing"

@@ -6,6 +6,44 @@ and UX review gates. Items below are grouped by milestone.
 
 ---
 
+## Next up
+
+### Explicit "Run" — stage jobs instead of auto-running on drop — ✅ SHIPPED (v0.1.5)
+Implemented with a distinct **`STAGED`** job state (cleaner than the pause toggle:
+*every* drop stages, including files dropped mid-run). A global **Run** button
+promotes all staged jobs; interrupted jobs re-stage on restart (never auto-run).
+Original problem/notes kept below for reference.
+
+**Problem:** dropping a file currently enqueues it and the worker starts it
+immediately, which spends money + bandwidth. An accidental drop shouldn't cost
+credits.
+
+**Change:** dropped files should be **staged** (added in a not-yet-started state),
+and processing begins only when the user takes an intentional action — a **"Run"**
+button (or e.g. "Transcribe" / "Start" if a clearer verb fits). Nothing hits the
+API until the user says so.
+
+**Design notes / considerations:**
+- New job state before processing (e.g. `STAGED`/`READY`) distinct from `QUEUED`,
+  or reuse the existing queue with a **default-paused** posture so staged files
+  wait until "Run." (The pause-queue plumbing from S1.8 is a good starting point —
+  this would make "hold until Run" the default rather than an opt-in toggle.)
+- "Run" could be **global** ("Run all staged") and/or **per-row** ("Run this one");
+  decide during design. Per-row lets users cherry-pick; global is faster for batches.
+- Staged rows should still allow **Options** editing and **Remove** before running.
+- Preserve add-while-running: files dropped during a run stage silently and wait
+  for the next Run (don't auto-join the active batch unless the user chooses).
+- Update the oversize-acknowledgement flow so it still fires before a staged job
+  runs (or at stage time).
+- Reflect this in the CLI too (transcribe is already explicit; ensure parity of
+  mental model).
+- Tests: dropped file stays non-running until Run; Run starts it; Remove a staged
+  job never calls the API.
+
+**Why:** intentional spend — the top request after v0.1.4.
+
+---
+
 ## V1.1 — Review follow-ups (deferred minors)
 
 Small, low-risk items from the third review round. None block V1 use.
@@ -50,6 +88,7 @@ Small, low-risk items from the third review round. None block V1 use.
   redistributed deliverables.
 - **Key-rotation runbook** (1 paragraph in README): suspected key compromise →
   revoke/rotate in the ElevenLabs dashboard → update via Settings (Keychain).
+  — ✅ done (README → Authentication).
 
 ---
 

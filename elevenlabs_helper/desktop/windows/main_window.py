@@ -50,7 +50,6 @@ class MainWindow(QMainWindow):
         self._rows: dict[str, int] = {}  # job_id -> row index
         self._busy_since: dict[str, float] = {}  # job_id -> monotonic start of busy state
         self._busy_base: dict[str, str] = {}     # job_id -> base status label (without elapsed)
-        self._pause_tip_shown = False            # one-time discoverability hint for Pause
 
         self.setWindowTitle("ElevenLabs Helper")
         self.resize(860, 580)
@@ -70,14 +69,14 @@ class MainWindow(QMainWindow):
         history_btn.clicked.connect(self._open_history)
         clear_btn = QPushButton("Clear completed")
         clear_btn.clicked.connect(self._clear_completed)
-        self.pause_btn = QPushButton("Pause")
-        self.pause_btn.setCheckable(True)
-        self.pause_btn.setToolTip("Hold the queue so you can set per-job Options before a job starts")
-        self.pause_btn.toggled.connect(self._toggle_pause)
+        self.run_btn = QPushButton("Run")
+        self.run_btn.setToolTip("Transcribe all staged files (this spends credits)")
+        self.run_btn.clicked.connect(self._run_staged)
+        self.run_btn.setEnabled(False)
         topbar.addWidget(settings_btn)
         topbar.addWidget(key_btn)
-        topbar.addWidget(self.pause_btn)
         topbar.addStretch()
+        topbar.addWidget(self.run_btn)
         topbar.addWidget(history_btn)
         topbar.addWidget(clear_btn)
         layout.addLayout(topbar)
@@ -138,14 +137,16 @@ class MainWindow(QMainWindow):
         self._elapsed_timer.timeout.connect(self._tick_elapsed)
         self._elapsed_timer.start(1000)
 
-    def _toggle_pause(self, paused: bool) -> None:
-        if paused:
-            self.engine.queue.pause()
-            self.pause_btn.setText("Resume")
-            self.statusBar().showMessage("Queue paused — new jobs wait so you can set Options.", 4000)
-        else:
-            self.engine.queue.resume()
-            self.pause_btn.setText("Pause")
+    def _run_staged(self) -> None:
+        started = self.engine.run_staged()
+        if started:
+            self.statusBar().showMessage(f"Started {started} staged job(s).", 4000)
+        self._update_run_button()
+
+    def _update_run_button(self) -> None:
+        staged = sum(1 for j in self.engine.jobs() if j.status == JobStatus.STAGED)
+        self.run_btn.setEnabled(staged > 0)
+        self.run_btn.setText(f"Run ({staged})" if staged else "Run")
 
     # --- key gate ------------------------------------------------------------
     def _update_key_state(self) -> None:
@@ -155,7 +156,7 @@ class MainWindow(QMainWindow):
 
     # --- adding work ---------------------------------------------------------
     def _add_files(self, paths: list[str]) -> None:
-        added = False
+        added = 0
         for path in paths:
             # Oversize gate (warn + acknowledge): size via stat, duration via mutagen.
             info = None
@@ -181,14 +182,11 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Could not add file", f"{path}\n\n{exc}")
                 continue
             self._render_job(job)
-            added = True
-        # One-time discoverability hint for per-job Options (UX-N1).
-        if added and not self._pause_tip_shown and not self.engine.queue.is_paused:
-            self._pause_tip_shown = True
+            added += 1
+        if added:
             self.statusBar().showMessage(
-                "Tip: use Pause to hold the queue and set per-file Options before a job starts.",
-                7000,
-            )
+                f"Staged {added} file(s) — press Run to transcribe.", 6000)
+        self._update_run_button()
 
     def _busy_label(self, job_id: str) -> str:
         base = self._busy_base.get(job_id, "Working")
@@ -214,6 +212,7 @@ class MainWindow(QMainWindow):
     # --- table rendering -----------------------------------------------------
     def _on_job_updated(self, job: Job) -> None:
         self._render_job(job)
+        self._update_run_button()
 
     def _reload_table(self) -> None:
         """Rebuild the whole table + row index from the store (keeps indices honest)."""
@@ -223,6 +222,7 @@ class MainWindow(QMainWindow):
         self._busy_base.clear()
         for job in self.engine.jobs():  # active (non-archived) jobs only
             self._render_job(job)
+        self._update_run_button()
 
     def _render_job(self, job: Job) -> None:
         row = self._rows.get(job.id)
@@ -300,7 +300,10 @@ class MainWindow(QMainWindow):
 
         primary: tuple[str, object] | None = None
         menu_items: list[tuple[str, object]] = []
-        if job.status == JobStatus.QUEUED:
+        if job.status == JobStatus.STAGED:
+            primary = ("Options", lambda: self._open_job_options(job.id))
+            menu_items = [("Remove", lambda: self._remove_staged(job.id))]
+        elif job.status == JobStatus.QUEUED:
             primary = ("Options", lambda: self._open_job_options(job.id))
             menu_items = [("Cancel", lambda: self._cancel_job(job.id))]
         elif job.status not in TERMINAL_STATUSES:  # active (uploading/transcribing/retrying)
@@ -361,19 +364,26 @@ class MainWindow(QMainWindow):
                 if row is not None:
                     self.table.selectRow(row)
 
+    _EDITABLE = (JobStatus.STAGED, JobStatus.QUEUED)
+
     def _open_job_options(self, job_id: str) -> None:
         job = self.engine.store.get(job_id)
-        if job is None or job.status != JobStatus.QUEUED:
+        if job is None or job.status not in self._EDITABLE:
             return
         dialog = JobOptionsDialog(job, self)
         if dialog.exec():
-            # Guard the race: the worker may have dequeued it while the dialog was open.
+            # Guard the race: the worker may have started it while the dialog was open.
             fresh = self.engine.store.get(job_id)
-            if fresh is None or fresh.status != JobStatus.QUEUED:
+            if fresh is None or fresh.status not in self._EDITABLE:
                 self.statusBar().showMessage("Job already started — options not applied.", 4000)
                 return
             self.engine.store.upsert(dialog.job)
             self._render_job(dialog.job)
+
+    def _remove_staged(self, job_id: str) -> None:
+        # A staged job never ran (no history/output) — just drop the record.
+        self.engine.store.delete(job_id)
+        self._reload_table()
 
     def _remove_job(self, job_id: str) -> None:
         # Archive (hide from the list) but KEEP the recovery history — deletion is

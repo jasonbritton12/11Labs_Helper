@@ -40,8 +40,12 @@ same engine powers the CLI and the Docker image.
   auto-detect language all on (toggleable in Settings or per queued job).
 - **Deliverables:** SRT, VTT, DOCX; the raw JSON response is always kept as the
   canonical source of truth (`<stem>.raw.json`).
-- **Batch queue:** sequential processing, add while running, persistent history
-  (SQLite), **auto-retry** of transient failures (429/5xx/network) with backoff.
+- **Staged, intentional runs:** dropped files are **staged** — nothing is
+  transcribed until you press **Run**, so an accidental drop never spends credits.
+  Files dropped while a batch runs also stage and wait for the next Run; an
+  interrupted job re-stages on restart (never auto-runs).
+- **Batch queue:** sequential processing, persistent history (SQLite),
+  **auto-retry** of transient failures (429/5xx/network) with backoff.
 - **Graceful failures:** every failure point is classified permanent (no retry:
   missing file, invalid key, oversize-unacknowledged, 413, output-write error) or
   transient (retried), each with human-readable status copy.
@@ -53,6 +57,12 @@ ElevenLabs has **no browser/OAuth login** for its API — only API keys. On firs
 run the app links to the ElevenLabs API-keys page and stores your pasted key in
 the **macOS Keychain** (validated against the API on save). Headless/cloud runs
 read `ELEVENLABS_API_KEY` instead.
+
+**Suspected key compromise (rotation runbook):** revoke/rotate the key in the
+**ElevenLabs dashboard → API keys**, then open **Settings → API Key** in the app
+and paste the new key (it replaces the Keychain entry; the old one stops working
+immediately once revoked upstream). For headless/CI, update the
+`ELEVENLABS_API_KEY` secret. The app never logs the key.
 
 ## Data at rest & privacy
 

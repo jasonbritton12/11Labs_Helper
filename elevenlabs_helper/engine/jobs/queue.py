@@ -87,15 +87,29 @@ class JobQueue:
         return self._paused
 
     def resume_unfinished(self) -> None:
-        """Re-queue jobs that were mid-flight at last shutdown."""
+        """Re-STAGE jobs that were mid-flight at last shutdown.
+
+        Nothing runs on launch without an explicit Run — an interrupted job returns
+        to the staged list rather than silently re-spending on the API.
+        """
         for job in self._store.list_unfinished():
-            job.status = JobStatus.QUEUED
-            job.message = "Re-queued after restart"
+            job.status = JobStatus.STAGED
+            job.message = "Re-staged after restart — press Run"
             self._persist(job)
-            with self._cv:
-                if job.id not in self._pending:
-                    self._pending.append(job.id)
-                    self._cv.notify()
+
+    def stage(self, job: Job) -> None:
+        """Add a job without running it. It waits (visible) until :meth:`run_staged`."""
+        job.status = JobStatus.STAGED
+        self._persist(job)
+
+    def run_staged(self) -> int:
+        """Promote every STAGED job to the queue for processing. Returns the count."""
+        started = 0
+        for job in self._store.list_jobs(archived=False):
+            if job.status == JobStatus.STAGED:
+                self.add(job)  # -> QUEUED + enqueue + notify
+                started += 1
+        return started
 
     # --- public API ----------------------------------------------------------
     def add(self, job: Job) -> None:

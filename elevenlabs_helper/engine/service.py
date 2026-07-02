@@ -72,12 +72,16 @@ class Engine:
             self.store.close()
 
     def add_source(self, source: str | Path, *, acknowledged_oversize: bool = False) -> Job:
-        """Create + enqueue a job. Returns the job (already persisted as queued)."""
+        """Create + **stage** a job (does not run it — nothing hits the API until Run)."""
         job = make_job(source, self.settings)
         annotate_facts(job)
         job.acknowledged_oversize = acknowledged_oversize
-        self.queue.add(job)
+        self.queue.stage(job)
         return job
+
+    def run_staged(self) -> int:
+        """Start processing all staged jobs. Returns how many were started."""
+        return self.queue.run_staged()
 
     def jobs(self) -> list[Job]:
         """Active (non-archived) jobs for the main queue view."""
