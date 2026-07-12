@@ -88,30 +88,6 @@ def test_loopback_allowed_for_tests():
     assert status == "unverified"
 
 
-# --- U3: pause holds the queue so options stay reachable ---------------------
-def test_pause_holds_jobs_then_resume_processes(tmp_path, dummy_mp3, mock_elevenlabs):
-    settings = _settings(tmp_path)
-    store = JobStore(db_path=tmp_path / "jobs.db")
-    done = threading.Event()
-    queue = JobQueue(
-        store, settings, base_url=mock_elevenlabs.base_url,
-        on_update=lambda j: done.set() if j.status == JobStatus.DONE else None,
-        api_key_provider=lambda: "k",
-    )
-    queue.pause()
-    queue.start()
-    job = make_job(dummy_mp3, settings)
-    queue.add(job)
-    threading.Event().wait(0.4)  # paused: nothing should run
-    assert store.get(job.id).status == JobStatus.QUEUED
-    assert mock_elevenlabs.calls == 0
-    queue.resume()
-    assert done.wait(timeout=30)
-    queue.stop()
-    assert store.get(job.id).status == JobStatus.DONE
-    store.close()
-
-
 # --- Deliverables are opt-in; no JSON in the output folder unless selected ---
 def test_writer_no_json_unless_selected(tmp_path):
     from elevenlabs_helper.engine.elevenlabs.models import TranscriptionResult

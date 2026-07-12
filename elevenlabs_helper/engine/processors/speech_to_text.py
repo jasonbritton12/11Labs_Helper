@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ..elevenlabs.client import TransferCanceled, transcribe_file
 from ..exporters.writer import write_deliverables
-from ..history import save_history
+from ..history import load_history_file, save_history
 from ..jobs.models import Job, JobStatus
 from ..media.inspect import inspect, limit_warnings
 from .base import ProcessContext, Processor
@@ -36,6 +36,27 @@ class SpeechToTextProcessor(Processor):
             job.progress = progress
             job.message = message
             ctx.emit(job)
+
+        # 0. Fast path (SER-025): a transcript already exists (e.g. this job was
+        #    interrupted after transcription and re-run) — re-export from history
+        #    instead of re-uploading and re-billing.
+        if job.history_json and Path(job.history_json).exists():
+            result = load_history_file(job.history_json)
+            step(JobStatus.EXPORTING, 0.9, "Writing deliverables")
+            try:
+                artifacts = write_deliverables(
+                    result, job.output_dir, source.stem, job.deliverables
+                )
+            except Exception as exc:  # deterministic — permanent
+                raise PermanentJobError(f"Couldn't write output to {job.output_dir}: {exc}") from exc
+            for kind, path in artifacts.items():
+                job.artifacts[kind] = str(path)
+            job.status = JobStatus.DONE
+            job.progress = 1.0
+            job.message = "Completed"
+            job.error = None
+            ctx.emit(job)
+            return
 
         # 1. Validate the input still exists and capture its facts.
         if not source.exists():

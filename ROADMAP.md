@@ -116,20 +116,41 @@ The original "throw any file at it" vision, plus more ElevenLabs features.
 
 ## Vendor data-rights / DPA checklist (security gate for regulated use)
 
-Answer/evidence these from ElevenLabs' official terms before sending regulated or
-confidential audio. Link the source docs in the README once confirmed.
+**Current plan: `Scale` (non-Enterprise).** That materially changes the answers:
+the strong controls (no-training, Zero-Retention Mode, data residency) are
+**Enterprise-only**, so on Scale they do **not** apply. Practical consequences:
+- **Action required:** enable the **training opt-out** in your ElevenLabs account
+  (Settings → Privacy) — on non-Enterprise tiers audio may otherwise be used to
+  improve their models. Opt-out is prospective only.
+- **No Zero-Retention Mode / no data residency** on Scale; assume uploads are
+  retained up to ~3 years and processed in ElevenLabs' default region.
+- **Recommendation:** treat this app as **fine for general/non-confidential audio**
+  on Scale; for **regulated/confidential** content, upgrade to Enterprise (ZRM +
+  residency + no-training + signed DPA) or don't send it.
 
-| # | Question | Evidence to capture |
-|---|---|---|
-| 1 | Is uploaded audio **used to train** ElevenLabs models? Can it be opted out? | Privacy policy / enterprise terms clause + opt-out setting |
-| 2 | **Retention:** how long is uploaded audio + transcripts stored? | Retention period; deletion API/SLA |
-| 3 | **Deletion:** can we request deletion of uploaded content? | DSR/deletion process |
-| 4 | **Sub-processors & data residency:** where is data processed/stored? | Sub-processor list; region options |
-| 5 | **DPA available?** (GDPR/CCPA) Is a signed DPA offered? | DPA link / signed copy |
-| 6 | **Security posture:** SOC 2 / ISO 27001 / pen-test summary? | Audit report / trust center link |
-| 7 | **Confidentiality:** contractual non-use of customer content beyond service? | Terms clause |
-| 8 | **Incident notification:** breach-notification commitment + timeline? | DPA/terms clause |
+Pre-filled from ElevenLabs' **public** docs (2026-07; verify against your own
+account/tier + a signed DPA before relying on it for regulated content). ⚠️ = you
+must confirm for your plan.
 
-Outcome: if answers are acceptable, link them in README "Data at rest & privacy"
-and the security gate clears. If not, restrict the app to non-regulated content
-and document that constraint.
+| # | Question | Public answer (verify) | Source |
+|---|---|---|---|
+| 1 | Audio **used to train** models? Opt-out? | **Enterprise: no** (not trained on beyond providing the service). **Non-Enterprise (Free/Creator/Pro/Scale): audio MAY be used to improve models unless you opt out** — opt-out is *prospective only*. ⚠️ **If you're not Enterprise, toggle the training opt-out in account settings.** | privacy-policy |
+| 2 | **Retention** of audio + transcripts | Voice-generated data kept ≤ **3 years** after last interaction (or less); STT logging governed by request settings. **Zero-Retention Mode** deletes request/response data immediately — but **Enterprise-only**, and this app doesn't set it. ⚠️ | privacy-policy, ZRM docs |
+| 3 | **Deletion** of uploaded content | Personal-data deletion via DSR/privacy process; ZRM = immediate. ⚠️ confirm process/SLA. | privacy-policy |
+| 4 | **Sub-processors & data residency** | Regional residency **US / EU / India** — **Enterprise-only**. Sub-processor list on request. ⚠️ | data-residency |
+| 5 | **DPA available?** | **Yes** — standard DPA published. ✅ (sign it for regulated use). | dpa |
+| 6 | **Security posture** | **SOC 2 Type II, ISO 27001, PCI DSS L1**; HIPAA + GDPR attestations. ✅ | Trust Center |
+| 7 | **Confidentiality / non-use** | Enterprise terms: customer content not used beyond providing the service. ⚠️ non-Enterprise differs (see #1). | privacy-policy / enterprise terms |
+| 8 | **Breach notification** | Covered in the DPA (standard commitment). ⚠️ confirm timeline in signed DPA. | dpa |
+
+**Bottom line:** For **regulated/confidential** audio, ElevenLabs is credible
+(SOC 2 II / ISO 27001 / DPA / GDPR), **but the strong data-protection posture
+(no-training, zero-retention, data residency) is largely ENTERPRISE-gated.** On a
+non-Enterprise tier you should, at minimum, **enable the training opt-out** and
+treat uploads as retained up to ~3 years. Sources: [Privacy Policy](https://elevenlabs.io/privacy-policy),
+[DPA](https://elevenlabs.io/dpa), [Data residency](https://elevenlabs.io/docs/overview/administration/data-residency),
+[Zero-Retention Mode](https://elevenlabs.io/docs/eleven-api/resources/zero-retention-mode),
+[Trust Center](https://compliance.elevenlabs.io/).
+
+Outcome: link the confirmed answers in README "Data at rest & privacy" and the
+security gate clears for your tier; otherwise restrict to non-regulated content.

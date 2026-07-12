@@ -50,7 +50,6 @@ class JobQueue:
         self._cancels: dict[str, threading.Event] = {}
         self._cv = threading.Condition()
         self._stop = False
-        self._paused = False
         self._worker: threading.Thread | None = None
         self._current: str | None = None
         self._log = get_logger()
@@ -70,21 +69,6 @@ class JobQueue:
             self._cv.notify_all()
         if wait and self._worker:
             self._worker.join(timeout=timeout)
-
-    def pause(self) -> None:
-        """Stop dequeuing new jobs (a job already running finishes). Lets the user
-        adjust per-job Options before processing starts."""
-        with self._cv:
-            self._paused = True
-
-    def resume(self) -> None:
-        with self._cv:
-            self._paused = False
-            self._cv.notify_all()
-
-    @property
-    def is_paused(self) -> bool:
-        return self._paused
 
     def resume_unfinished(self) -> None:
         """Re-STAGE jobs that were mid-flight at last shutdown.
@@ -150,7 +134,7 @@ class JobQueue:
     def _run(self) -> None:
         while True:
             with self._cv:
-                while (not self._pending or self._paused) and not self._stop:
+                while not self._pending and not self._stop:
                     self._cv.wait()
                 if self._stop:
                     return

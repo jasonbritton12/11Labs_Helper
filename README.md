@@ -67,9 +67,13 @@ immediately once revoked upstream). For headless/CI, update the
 ## Data at rest & privacy
 
 - Audio you add is **uploaded to ElevenLabs** for transcription (third-party AI
-  vendor); it is processed under **ElevenLabs' own terms** (review their privacy
-  policy / DPA for retention, sub-processors, and whether your audio may be used
-  for model training before sending regulated content).
+  vendor); it is processed under **ElevenLabs' own terms**. ElevenLabs is SOC 2
+  Type II / ISO 27001 certified with a published DPA, but its strongest data
+  controls (**no-training, Zero-Retention Mode, data residency**) are
+  **Enterprise-only**. On non-Enterprise tiers (e.g. **Scale**), **enable the
+  training opt-out** in your ElevenLabs account and assume uploads are retained up
+  to ~3 years — treat the app as suited to **general/non-confidential** audio.
+  See the DPA checklist in [ROADMAP.md](ROADMAP.md) before sending regulated content.
 - Transcripts are **AI-generated and may contain errors** — verify before relying
   on them. DOCX deliverables carry an "AI-generated" disclosure line.
 - **Deliverables** you choose (SRT/VTT/DOCX, and optionally a JSON copy) are

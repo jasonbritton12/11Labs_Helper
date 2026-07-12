@@ -78,6 +78,21 @@ def test_delete_permanently_removes_record_and_history(tmp_path, dummy_mp3, mock
     store.close()
 
 
+def test_rerun_with_existing_history_skips_upload(tmp_path, dummy_mp3, mock_elevenlabs):
+    # SER-025: re-running a job that already has a transcript (e.g. interrupted after
+    # transcription, re-staged) must re-export from history — never re-upload/re-bill.
+    settings, store, job = _run_one(tmp_path, dummy_mp3, mock_elevenlabs)
+    assert mock_elevenlabs.calls == 1
+    (Path(job.output_dir) / "sample.srt").unlink()
+
+    ctx = ProcessContext(api_key="k", settings=settings, base_url=mock_elevenlabs.base_url)
+    SpeechToTextProcessor().run(job, ctx)   # history_json present -> fast path
+    assert (Path(job.output_dir) / "sample.srt").exists()
+    assert mock_elevenlabs.calls == 1       # no second transcription
+    assert job.status == JobStatus.DONE
+    store.close()
+
+
 def test_reexport_empty_formats_falls_back_to_job_defaults(tmp_path, dummy_mp3, mock_elevenlabs):
     settings, store, job = _run_one(tmp_path, dummy_mp3, mock_elevenlabs)  # SRT+VTT
     (Path(job.output_dir) / "sample.srt").unlink()

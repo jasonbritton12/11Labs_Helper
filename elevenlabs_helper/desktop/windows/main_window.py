@@ -73,6 +73,12 @@ class MainWindow(QMainWindow):
         self.run_btn.setToolTip("Transcribe all staged files (this spends credits)")
         self.run_btn.clicked.connect(self._run_staged)
         self.run_btn.setEnabled(False)
+        # Prominent primary-action styling (L1); muted when there's nothing to run.
+        self.run_btn.setStyleSheet(
+            "QPushButton { background:#2d7ff9; color:white; font-weight:bold;"
+            " padding:4px 16px; border:none; border-radius:5px; }"
+            " QPushButton:disabled { background:palette(button); color:palette(mid); font-weight:normal; }"
+        )
         topbar.addWidget(settings_btn)
         topbar.addWidget(key_btn)
         topbar.addStretch()

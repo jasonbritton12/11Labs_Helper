@@ -25,7 +25,7 @@ class DropArea(QFrame):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
         label = QLabel(
-            "Drop .mp3 files to transcribe\n"
+            "Drop .mp3 files to stage — then press Run to transcribe\n"
             "(export audio first — video & auto-conversion are on the roadmap)"
         )
         label.setAlignment(Qt.AlignCenter)
