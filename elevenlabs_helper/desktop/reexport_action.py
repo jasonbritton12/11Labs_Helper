@@ -17,7 +17,10 @@ def reexport_with_prompt(parent, engine, job: Job) -> dict | None:
 
     Returns the artifacts dict on success, or None if canceled/failed.
     """
-    dialog = ReexportDialog(list(job.deliverables), job.source_name, job.output_dir, parent)
+    dialog = ReexportDialog(
+        list(job.deliverables), job.source_name, job.output_dir, parent,
+        readable_default=engine.settings.readable_subtitles,
+    )
     if not dialog.exec():
         return None
     formats = dialog.selected()
@@ -39,7 +42,10 @@ def reexport_with_prompt(parent, engine, job: Job) -> dict | None:
             return None
 
     try:
-        artifacts = engine.reexport(job.id, deliverables=formats, out_dir=out_dir)
+        artifacts = engine.reexport(
+            job.id, deliverables=formats, out_dir=out_dir,
+            readable_subtitles=dialog.readable_subtitles(),
+        )
     except Exception as exc:  # noqa: BLE001
         QMessageBox.warning(parent, "Re-export failed", str(exc))
         return None

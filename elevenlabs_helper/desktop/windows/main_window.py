@@ -37,6 +37,7 @@ from ..widgets.job_options_dialog import JobOptionsDialog
 from ..widgets.key_dialog import KeyDialog
 from ..widgets.settings_dialog import SettingsDialog
 from .history_dialog import HistoryDialog
+from .speaker_qc_dialog import SpeakerQCDialog
 
 _COLUMNS = ["File", "Status", "Progress", "Size / Duration", "Actions"]
 _BUSY_STATUSES = {JobStatus.UPLOADING, JobStatus.TRANSCRIBING}
@@ -318,7 +319,8 @@ class MainWindow(QMainWindow):
             # Reveal is the most common action on a finished job (K1); re-export is
             # the rarer recovery path, kept a click away in the menu.
             primary = ("Reveal", lambda: self._reveal(job))
-            menu_items = [("Re-export…", lambda: self._reexport(job.id)),
+            menu_items = [("Review speakers…", lambda: self._open_speaker_qc(job.id)),
+                          ("Re-export…", lambda: self._reexport(job.id)),
                           ("Remove from list", lambda: self._remove_job(job.id))]
         else:  # FAILED / CANCELED
             primary = ("Retry", lambda: self.engine.queue.retry(job.id))
@@ -369,6 +371,20 @@ class MainWindow(QMainWindow):
                 row = self._rows.get(job_id)
                 if row is not None:
                     self.table.selectRow(row)
+
+    def _open_speaker_qc(self, job_id: str) -> None:
+        job = self.engine.store.get(job_id)
+        if job is None:
+            return
+        try:
+            dialog = SpeakerQCDialog(self.engine, job, self)
+        except Exception as exc:  # noqa: BLE001 - typically: no stored transcript
+            QMessageBox.warning(self, "Speaker QC unavailable", str(exc))
+            return
+        if dialog.exec():
+            self.statusBar().showMessage(
+                "Speaker edits saved — use Re-export to regenerate files (no API cost).", 6000
+            )
 
     _EDITABLE = (JobStatus.STAGED, JobStatus.QUEUED)
 

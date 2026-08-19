@@ -104,7 +104,10 @@ The original "throw any file at it" vision, plus more ElevenLabs features.
   (Note: `TranscriptionResult.offset()` already exists for this.)
 - **Higher-quality / lossless audio** options for dubbing-grade workflows.
 - **Dubbing / Dubbing Studio:** a new `processors/dubbing.py` implementing the
-  same `Processor` interface (no queue/UI re-architecture needed).
+  same `Processor` interface (no queue/UI re-architecture needed). Strategy and
+  phased plan in [docs/DUBBING_WORKFLOW.md](docs/DUBBING_WORKFLOW.md); Phase 1
+  (speaker QC + Manual-Dub CSV + readable-subtitle re-timing) shipped on the
+  `dubbing-workflow` branch.
 - **More exports:** optional TXT / JSON / HTML / PDF as user-facing downloads
   (raw JSON is already retained internally).
 - **Async/webhook transcription** for very long jobs (needs a callback endpoint;

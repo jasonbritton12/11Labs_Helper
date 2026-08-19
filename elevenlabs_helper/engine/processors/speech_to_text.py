@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..edits import load_edits
 from ..elevenlabs.client import TransferCanceled, transcribe_file
 from ..exporters.writer import write_deliverables
 from ..history import load_history_file, save_history
@@ -45,7 +46,9 @@ class SpeechToTextProcessor(Processor):
             step(JobStatus.EXPORTING, 0.9, "Writing deliverables")
             try:
                 artifacts = write_deliverables(
-                    result, job.output_dir, source.stem, job.deliverables
+                    result, job.output_dir, source.stem, job.deliverables,
+                    edits=load_edits(job.id),
+                    readable_subtitles=ctx.settings.readable_subtitles,
                 )
             except Exception as exc:  # deterministic — permanent
                 raise PermanentJobError(f"Couldn't write output to {job.output_dir}: {exc}") from exc
@@ -117,7 +120,8 @@ class SpeechToTextProcessor(Processor):
         step(JobStatus.EXPORTING, 0.9, "Writing deliverables")
         try:
             artifacts = write_deliverables(
-                result, job.output_dir, source.stem, job.deliverables
+                result, job.output_dir, source.stem, job.deliverables,
+                readable_subtitles=ctx.settings.readable_subtitles,
             )
         except Exception as exc:  # export is deterministic — never re-upload/re-bill on failure
             raise PermanentJobError(

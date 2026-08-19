@@ -6,9 +6,13 @@ The canonical model is the single source of truth from which every deliverable
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING
 
 from ..elevenlabs.models import TranscriptionResult, Word
+
+if TYPE_CHECKING:  # avoid a runtime exporters -> engine.edits dependency
+    from ..edits import SpeakerEdits
 
 # Cue-splitting heuristics for readable subtitles.
 _MAX_CUE_SECS = 5.0
@@ -33,15 +37,37 @@ class Transcript:
     full_text: str = ""
     language_code: str | None = None
     multi_speaker: bool = False
+    # User-chosen display names, e.g. {"speaker_0": "MARIA"} (see engine.edits).
+    speaker_names: dict[str, str] = field(default_factory=dict)
 
     def speaker_label(self, speaker_id: str | None) -> str:
         """Human label like 'Speaker 1' from an id like 'speaker_0'."""
+        if speaker_id and speaker_id in self.speaker_names:
+            return self.speaker_names[speaker_id]
         if not speaker_id:
             return "Speaker"
         digits = "".join(ch for ch in speaker_id if ch.isdigit())
         if digits:
             return f"Speaker {int(digits) + 1}"
         return speaker_id
+
+
+def apply_edits(transcript: Transcript, edits: "SpeakerEdits") -> Transcript:
+    """Return a new Transcript with speaker renames/reassignments applied.
+
+    The input transcript is left untouched; cue timing and text never change.
+    """
+    cues = [
+        replace(cue, speaker_id=edits.cue_overrides.get(cue.index, cue.speaker_id))
+        for cue in transcript.cues
+    ]
+    speakers = {c.speaker_id for c in cues if c.speaker_id and not c.is_audio_event}
+    return replace(
+        transcript,
+        cues=cues,
+        multi_speaker=len(speakers) > 1,
+        speaker_names={**transcript.speaker_names, **edits.speaker_names},
+    )
 
 
 def caption_lines(transcript: "Transcript") -> list[str]:

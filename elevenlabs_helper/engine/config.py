@@ -24,6 +24,7 @@ class Deliverable(str, Enum):
     VTT = "vtt"
     DOCX = "docx"
     JSON = "json"          # raw/canonical; internal by default, exposable later
+    DUB_CSV = "dub_csv"    # ElevenLabs Dubbing Studio "Manual Dub" script (speaker/timing/text)
 
 
 # Default user-facing deliverables. (DOCX and JSON are opt-in; the canonical JSON
@@ -40,6 +41,7 @@ DELIVERABLE_LABELS: dict[Deliverable, str] = {
     Deliverable.VTT: "VTT",
     Deliverable.DOCX: "DOCX",
     Deliverable.JSON: "JSON",
+    Deliverable.DUB_CSV: "Dubbing CSV (Manual Dub)",
 }
 
 APP_NAME = "ElevenLabsHelper"
@@ -98,6 +100,9 @@ class EngineSettings(BaseModel):
     # Auto-delete history JSONs older than N days (0 = keep forever). Data-minimization
     # option for privacy-sensitive users (SSR-011).
     history_retention_days: int = 0
+    # Re-time SRT/VTT cues for reading comfort (min duration / max chars-per-second)
+    # instead of raw waveform alignment. The Dubbing CSV always keeps waveform timing.
+    readable_subtitles: bool = False
     max_retries: int = 4
     retry_base_delay_secs: float = 2.0
 
