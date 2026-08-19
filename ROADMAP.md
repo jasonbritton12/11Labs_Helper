@@ -42,6 +42,45 @@ API until the user says so.
 
 **Why:** intentional spend — the top request after v0.1.4.
 
+### Universal caption interpretation layer — PLANNED
+
+Use the house standard in
+[Universal Caption Authoring Rule — 608 / 708 / Web](docs/universal-caption-authoring-rule_608-708-web.md)
+as the default policy for prerecorded English readable-caption outputs. The
+current `readability.retime()` behavior is a Phase-1 timing baseline, not the
+finished authoring system.
+
+Add an engine-level interpretation layer between the edited canonical transcript
+and the SRT/VTT renderers. It will create one versioned semantic caption document
+with explicit line breaks, resolved timing, source traceability, and structured
+QC. Delivery renderers will consume that document rather than independently
+reflowing text. Destination-specific profiles may override the house defaults.
+Caption positioning and styling are out of scope: outputs must not emit placement,
+alignment, font, color, size, or other presentation directives.
+
+The implementation is split into four checkpoints:
+
+1. **C1 — foundation:** versioned profiles, destination overrides, interpreted
+   caption/QC models, and backward-compatible mapping from
+   `readable_subtitles=True` to the house profile.
+2. **C2 — deterministic rules:** 32 characters × 2 lines, natural line breaks,
+   17/20 CPS target-warning-failure bands, 1–7 second durations, no overlap,
+   speaker-change handling, glyph validation, and machine-readable QC.
+3. **C3 — editorial review:** preview/QC UI, source-linked findings, manual
+   split/merge/line-break controls, and separately persisted exception approvals.
+4. **C4 — delivery context:** frame/shot-aware timing and verified 608, 708,
+   WebVTT, SRT, IMSC, and TTML profiles as exporters land, all without emitted
+   caption styling or positioning.
+
+The canonical transcription and speaker edits remain immutable. The Dubbing CSV
+continues to bypass caption interpretation and preserve waveform-aligned timing.
+If the rules cannot be satisfied without changing meaning or synchronization,
+the layer must emit a visible failure/approval requirement rather than truncate,
+paraphrase, drop glyphs, or silently claim compliance.
+
+Detailed architecture, rule mapping, verification matrix, and exit criteria:
+[Caption Interpretation Layer Plan](docs/CAPTION_INTERPRETATION_LAYER.md).
+
 ---
 
 ## V1.1 — Review follow-ups (deferred minors)
@@ -108,6 +147,9 @@ The original "throw any file at it" vision, plus more ElevenLabs features.
   phased plan in [docs/DUBBING_WORKFLOW.md](docs/DUBBING_WORKFLOW.md); Phase 1
   (speaker QC + Manual-Dub CSV + readable-subtitle re-timing) shipped on the
   `dubbing-workflow` branch.
+- **Caption interpretation:** replace timing-only readable subtitles with the
+  rulebook-driven, profile-based authoring layer described above. Maintain one
+  semantic caption master for all delivery renderers.
 - **More exports:** optional TXT / JSON / HTML / PDF as user-facing downloads
   (raw JSON is already retained internally).
 - **Async/webhook transcription** for very long jobs (needs a callback endpoint;

@@ -49,6 +49,12 @@ free and repeatable.
 1s display, ≤17 chars/sec reading speed, tiny same-speaker fragments merged,
 ~2-frame gaps preserved — via the "Readable subtitle timing" checkbox in
 Re-export (default configurable via `readable_subtitles` in settings.json).
+This is the timing-only Phase-1 baseline. The planned
+[caption interpretation layer](CAPTION_INTERPRETATION_LAYER.md) will apply the
+[universal 608/708/Web house rule](universal-caption-authoring-rule_608-708-web.md)
+to segmentation, authored line breaks, timing, speaker treatment, glyph checks,
+destination overrides, and structured QC. The Dubbing CSV remains outside that
+layer and keeps exact waveform timing.
 
 ### 4. Is an external EN→ES translation step worth it? Does supplying Spanish save credits?
 **No credit savings — dubbing bills per minute whether or not ElevenLabs
@@ -91,6 +97,7 @@ as "create the Studio project from the app" rather than replacing the Studio.
 | Phase | What | Status |
 |---|---|---|
 | 1 | Speaker QC dialog, Manual-Dub CSV export, readable-subtitle re-timing | **Done (this branch)** |
+| C1–C4 | Universal caption interpretation layer and editorial QC workflow | Planned — see [caption plan](CAPTION_INTERPRETATION_LAYER.md) |
 | 2 | EN→ES translation pass (Claude/DeepL + glossary) filling the CSV `translation` column, with QC UI | Planned |
 | 3 | Video input (ffmpeg), optional Demucs stem separation, direct dubbing-API project creation | Planned |
 
