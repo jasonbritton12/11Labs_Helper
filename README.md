@@ -1,13 +1,14 @@
 # ElevenLabs Helper
 
-Upload an audio file to **ElevenLabs Speech-to-Text (Scribe)**, monitor a batch
-queue, and collect transcript deliverables (SRT / VTT / DOCX). Ships as a
+Upload media to **ElevenLabs Speech-to-Text (Scribe)** or **Voice Isolation**,
+monitor a batch queue, and collect transcript or dialog-only deliverables. Ships as a
 lightweight macOS desktop app over a **reusable, headless engine** that also runs
 as a CLI/container for cloud supply-chain workflows (e.g. SDVI Rally).
 
-**V1 scope:** you supply a ready-to-upload **`.mp3`** (no conversion). FFmpeg-based
-conversion, video input, segmentation of very long files, and dubbing are on the
-roadmap (see below).
+**Transcription scope:** supply a ready-to-upload **`.mp3`** (no conversion).
+**Voice Isolation Phase 1:** supply a **WAV, MP3, or MP4** and receive the native
+ElevenLabs dialog-only response as `<source>_DX.<format>`. M&E creation, phase
+inversion, alignment, and audio re-encoding are intentionally deferred.
 
 ## Architecture
 
@@ -15,9 +16,9 @@ roadmap (see below).
 elevenlabs_helper/
   engine/      # PURE, UI-free core — reuse anywhere (CLI, container, SDVI Rally)
     media/inspect.py   # size (stat) + duration (mutagen) + limit warnings — no ffmpeg
-    elevenlabs/        # Scribe HTTP client (streamed upload, retries) + response models
+    elevenlabs/        # Scribe + Voice Isolation HTTP clients (streamed, retried)
     exporters/         # canonical transcript -> SRT/VTT/DOCX (+ raw JSON)
-    processors/        # pluggable feature interface (V1: speech_to_text; future: dubbing)
+    processors/        # pluggable workflows: speech_to_text + voice_isolation
     jobs/              # Job model, SQLite store, sequential queue w/ retry
     cli.py             # headless entry point
     service.py         # Engine facade (store + queue wiring)
@@ -32,13 +33,17 @@ same engine powers the CLI and the Docker image.
 
 - **No conversion (V1):** the audio file is uploaded as-is, **streamed from disk**
   (never loaded fully into memory).
-- **Oversize gate:** before queueing, the file's size (via `stat`) and duration
+- **Dialog isolation:** select **Isolate dialog**, stage WAV/MP3/MP4 files, then
+  press **Run**. Each native Voice Isolation response is streamed to
+  `<source>_DX.<format>` and committed atomically so partial downloads are not
+  exposed as completed output.
+- **Feature-specific oversize gate:** before queueing, the file's size (via `stat`) and duration
   (via the pure-Python `mutagen` header reader) are checked against ElevenLabs'
-  limits (5 GB / ~10 h). If either is exceeded you get a **warning that requires
+  limits (transcription: 5 GB / ~10 h; Voice Isolation: 500 MB / 1 h). If either is exceeded you get a **warning that requires
   acknowledgement** (GUI confirm; CLI `--force`) before it's attempted.
 - **Scribe defaults:** diarization, word timestamps, audio-event tagging, and
   auto-detect language all on (toggleable in Settings or per queued job).
-- **Deliverables:** SRT, VTT, DOCX; the raw JSON response is always kept as the
+- **Transcription deliverables:** SRT, VTT, DOCX; the raw JSON response is always kept as the
   canonical source of truth (`<stem>.raw.json`).
 - **Staged, intentional runs:** dropped files are **staged** — nothing is
   transcribed until you press **Run**, so an accidental drop never spends credits.
@@ -66,7 +71,7 @@ immediately once revoked upstream). For headless/CI, update the
 
 ## Data at rest & privacy
 
-- Audio you add is **uploaded to ElevenLabs** for transcription (third-party AI
+- Media you add is **uploaded to ElevenLabs** for transcription or dialog isolation (third-party AI
   vendor); it is processed under **ElevenLabs' own terms**. ElevenLabs is SOC 2
   Type II / ISO 27001 certified with a published DPA, but its strongest data
   controls (**no-training, Zero-Retention Mode, data residency**) are
@@ -76,7 +81,8 @@ immediately once revoked upstream). For headless/CI, update the
   See the DPA checklist in [ROADMAP.md](ROADMAP.md) before sending regulated content.
 - Transcripts are **AI-generated and may contain errors** — verify before relying
   on them. DOCX deliverables carry an "AI-generated" disclosure line.
-- **Deliverables** you choose (SRT/VTT/DOCX, and optionally a JSON copy) are
+- **Deliverables** you choose (SRT/VTT/DOCX, optionally a JSON copy, or native
+  dialog-only audio) are
   written **in cleartext** to your output folder (defaults: **SRT + VTT**). For
   sensitive content keep output on a **FileVault**-encrypted volume.
 - **Transcript history:** the canonical JSON is also kept **silently in the app
@@ -111,6 +117,7 @@ python -m elevenlabs_helper.desktop.app
 # CLI
 elevenlabs-helper inspect clip.mp3
 ELEVENLABS_API_KEY=sk-... elevenlabs-helper transcribe clip.mp3 --out ./out --formats srt,vtt,docx
+ELEVENLABS_API_KEY=sk-... elevenlabs-helper isolate interview.mp4 --out ./out
 # add --force to proceed past size/duration limits
 
 # Tests
@@ -164,6 +171,11 @@ docker build -f packaging/Dockerfile -t elevenlabs-helper .
 docker run --rm -e ELEVENLABS_API_KEY=sk-... \
     -v "$PWD/in:/in" -v "$PWD/out:/out" \
     elevenlabs-helper transcribe /in/clip.mp3 --out /out --formats srt,vtt,docx
+
+# Voice Isolation (WAV / MP3 / MP4 -> native dialog-only audio)
+docker run --rm -e ELEVENLABS_API_KEY=sk-... \
+    -v "$PWD/in:/in" -v "$PWD/out:/out" \
+    elevenlabs-helper isolate /in/interview.mp4 --out /out
 ```
 
 The image is the engine + CLI (no GUI, no ffmpeg), so a Rally action can invoke
@@ -177,8 +189,12 @@ security gate, for regulated use), and V2 capability work below.
 
 ### Out of scope for V1
 
-- **FFmpeg conversion module:** accept MOV/MP4/WAV/etc., transcode to a compact
-  upload, with estimated size/duration.
+- **FFmpeg conversion module:** transcode/remux source media and support broader
+  formats for transcription and post-processing. Voice Isolation Phase 1 uploads
+  its supported WAV/MP3/MP4 inputs without conversion.
+- **Derived M&E:** align and gain-match the isolated dialog against the source,
+  invert it, and render a best-effort music-and-effects track at a controlled
+  professional audio format.
 - **Segmentation + stitching** of files beyond the API limits (transcribe in
   chunks, re-merge with corrected timecodes).
 - **Higher-quality / lossless audio** options for dubbing-grade workflows.

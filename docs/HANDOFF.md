@@ -1,6 +1,6 @@
 # ElevenLabs Helper — Project Handoff
 
-*Last updated: 2026-07-20. Written for an engineer (or a future session) picking
+*Last updated: 2026-09-05. Written for an engineer (or a future session) picking
 this project up cold. Pair this with [ROADMAP.md](../ROADMAP.md) for forward work
 and [DUBBING_WORKFLOW.md](DUBBING_WORKFLOW.md) for the dubbing strategy.*
 
@@ -8,17 +8,17 @@ and [DUBBING_WORKFLOW.md](DUBBING_WORKFLOW.md) for the dubbing strategy.*
 
 ## 1. What this is
 
-A macOS desktop app that uploads audio to **ElevenLabs Speech-to-Text (Scribe)**,
-runs a batch queue, and produces transcript deliverables (SRT / VTT / DOCX / JSON).
+A macOS desktop app that uploads media to **ElevenLabs Speech-to-Text (Scribe)**
+or **Voice Isolation**, runs a batch queue, and produces transcript deliverables
+(SRT / VTT / DOCX / JSON) or a native dialog-only audio file.
 It is built as a **pure, headless engine** with a thin **PySide6 GUI** on top, so
 the same core runs as a CLI or in a container for cloud workflows (e.g. SDVI Rally).
 
-A second capability is in progress on a branch: **dubbing-workflow prep** —
-speaker QC and a Manual-Dub CSV export that feed ElevenLabs Dubbing Studio for
-English→Spanish dubbing.
+The current feature line also includes **dubbing-workflow prep** — speaker QC
+and a Manual-Dub CSV export that feed ElevenLabs Dubbing Studio for
+English→Spanish dubbing — plus Phase 1 dialog isolation.
 
-**Current version:** `0.1.0` in [pyproject.toml](../pyproject.toml) (the working
-tag line in commits/reviews is "v0.1.5" — the pyproject version was not bumped).
+**Current version:** `0.2.0` in [pyproject.toml](../pyproject.toml).
 
 ---
 
@@ -26,15 +26,22 @@ tag line in commits/reviews is "v0.1.5" — the pyproject version was not bumped
 
 | | |
 |---|---|
-| **Current branch** | `dubbing-workflow` (HEAD `ddd5e72`) |
+| **Current branch** | `codex/voice-isolation-me` (based on `dubbing-workflow` at `2bd5cff`) |
 | **Main branch** | `main` (HEAD `34da1f4`) |
-| **Working tree** | clean (dubbing Phase 1 is committed on the branch, not yet merged) |
-| **Tests** | 74 passing (`pytest`, excluding the opt-in live-API test) |
-| **Not yet on main** | the entire dubbing-workflow feature (see §7) |
+| **Feature status** | Voice Isolation Phase 1 implemented and packaged on the feature branch |
+| **Tests** | 94 passing, 2 opt-in live API checks skipped by default |
+| **Not yet on main** | dubbing-workflow changes plus Voice Isolation Phase 1 |
 
-The `dubbing-workflow` branch is one commit ahead of `main`. Nothing is pushed to
-a remote in this session — the repo has no configured GitHub remote for the branch.
-Merging to main is a decision for the owner (see §9).
+Release validation produced an arm64 `0.2.0` app and DMG, verified the frozen
+Voice Isolation modules, launched the packaged app, selected **Isolate dialog**,
+and staged a 48 kHz/24-bit WAV without contacting ElevenLabs. The DMG SHA-256 was
+`45757b6fe9ded1d359acaac9836d74ab99f6f57467b07619878e25ec4badcec7`.
+
+One live request reached `POST /v1/audio-isolation` but was rejected before
+processing because the saved scoped API key lacks the `audio_isolation`
+permission (`HTTP 401 missing_permissions`). Re-run the live gate with that
+permission enabled before tagging a release. The local build is ad-hoc signed
+only and is not notarized.
 
 ---
 
@@ -48,10 +55,11 @@ elevenlabs_helper/
     service.py               #   Engine facade (store + queue wiring; reexport; speaker edits)
     history.py               #   canonical transcript JSON kept in app-support dir (free re-export)
     edits.py                 #   NEW: speaker-rename/reassign overlay (<job_id>.edits.json)
-    cli.py                   #   headless entry point (transcribe/inspect/history/reexport)
+    cli.py                   #   headless entry point (transcribe/isolate/inspect/history/reexport)
     media/inspect.py         #   size (stat) + duration (mutagen) + oversize warnings — no ffmpeg
     elevenlabs/
       client.py              #   Scribe HTTP client: streamed upload, retries/backoff, error types
+      audio_isolation.py     #   Voice Isolation: streamed upload + atomic native response
       models.py              #   Pydantic response models (TranscriptionResult, Word)
     exporters/
       canonical.py           #   build_transcript(result) -> Transcript of Cues; apply_edits()
@@ -66,6 +74,7 @@ elevenlabs_helper/
     processors/
       base.py                #   Processor interface + ProcessContext
       speech_to_text.py      #   V1 feature: upload -> transcribe -> export (+ re-export fast path)
+      voice_isolation.py     #   WAV/MP3/MP4 -> native <source>_DX.<format>
   desktop/                   # PySide6 GUI — thin shell over engine.service.Engine
     app.py                   #   QApplication bootstrap (gui entry point)
     bridge.py                #   EngineBridge: engine callbacks -> Qt signals
@@ -79,7 +88,7 @@ elevenlabs_helper/
       settings_dialog.py, reexport_dialog.py
   packaging/                 # PyInstaller spec, build_dmg.sh, Dockerfile (engine+CLI only), main.py
   scripts/live_check.py      # manual live-API smoke test (reads key from Keychain/env, never prints)
-  tests/                     # pytest suite (74 tests)
+  tests/                     # pytest suite (live API checks are opt-in)
   docs/                      # DUBBING_WORKFLOW.md, HANDOFF.md (this file)
 ```
 
@@ -87,9 +96,11 @@ elevenlabs_helper/
 `engine.service.Engine`. If you find yourself writing logic in `desktop/`, it
 probably belongs in the engine so the CLI/container gets it too.
 
-**The extension seam:** `JobQueue(processor=...)` takes any `Processor`. New
-ElevenLabs features (dubbing, etc.) are new `Processor` implementations — no queue
-or GUI re-architecture required. This was a deliberate V1 design decision.
+**The extension seam:** each persisted `Job` has a backward-compatible `job_type`,
+and `JobQueue` dispatches it through a processor registry. The shipped processors
+are `SpeechToTextProcessor` and `VoiceIsolationProcessor`; tests can still inject
+one processor override. New ElevenLabs features remain engine processors rather
+than GUI business logic.
 
 ---
 
@@ -101,9 +112,11 @@ or GUI re-architecture required. This was a deliberate V1 design decision.
 2. **Run** — `run_staged()` promotes STAGED jobs to QUEUED and the worker picks
    them up one at a time (sequential by design). Nothing hits the API until Run —
    an accidental drop never spends credits.
-3. **Process** — `SpeechToTextProcessor.run()`: validate → oversize gate →
-   `transcribe_file()` (streamed, with retry/backoff) → save canonical JSON to
-   history space → `write_deliverables()`.
+3. **Process** — the queue selects a processor from `job_type`:
+   - `SpeechToTextProcessor`: validate → transcription oversize gate → streamed
+     Scribe request → save canonical JSON → write transcript deliverables.
+   - `VoiceIsolationProcessor`: validate → 500 MB / one-hour gate → streamed
+     Voice Isolation request → atomically save `<source>_DX.<format>`.
 4. **Persist** — the canonical `TranscriptionResult` JSON is kept in the
    app-support **history** dir (not the user's output folder), so deliverables can
    be regenerated **free** (no API) via `Engine.reexport()`.
@@ -116,16 +129,19 @@ or GUI re-architecture required. This was a deliberate V1 design decision.
 A `Transcript` is a list of `Cue`s (start, end, text, speaker_id, is_audio_event),
 split by speaker change / gap / length / sentence boundary in `build_transcript()`.
 
-`JobStatus`: STAGED → QUEUED → UPLOADING → TRANSCRIBING → EXPORTING → DONE, with
-FAILED / RETRYING / CANCELED as side states. Terminal = {DONE, FAILED, CANCELED}.
+`JobStatus`: STAGED → QUEUED → UPLOADING → workflow state (`TRANSCRIBING` or
+`ISOLATING`) → optional EXPORTING → DONE, with FAILED / RETRYING / CANCELED as
+side states. Terminal = {DONE, FAILED, CANCELED}.
 
 ---
 
 ## 5. Key decisions & constraints (the "why", so you don't undo them)
 
-- **V1 is `.mp3`-only, no conversion.** FFmpeg was deliberately removed from V1
+- **Transcription remains `.mp3`-only, no conversion.** FFmpeg was deliberately removed from V1
   (pivot 2026-06-23). Duration is read with pure-Python `mutagen`. Video input +
   transcode is a roadmap item, to return behind the same `Processor`/media interface.
+- **Voice Isolation Phase 1 accepts WAV/MP3/MP4 as-is.** It preserves the native
+  API response and does no phase inversion, resampling, channel conversion, or M&E work.
 - **No OAuth exists for the ElevenLabs API** — API keys only. The key lives in the
   macOS Keychain (service `ElevenLabsHelper`, pinned to the secure backend);
   headless runs use `ELEVENLABS_API_KEY`. The key is never logged or printed.
@@ -155,6 +171,7 @@ pip install -e ".[dev,gui]"
 
 # CLI (headless engine)
 elevenlabs-helper transcribe clip.mp3 --out ./out --formats srt,vtt,dub_csv
+elevenlabs-helper isolate interview.mp4 --out ./out
 elevenlabs-helper inspect clip.mp3
 elevenlabs-helper history
 elevenlabs-helper reexport <job-id-or-json> --formats srt,vtt
@@ -237,12 +254,16 @@ subscription credits or API dollars — it changes the optimization math.
 ## 9. Suggested next steps
 
 **Immediate / decisions:**
-1. **Real-world validate the CSV**: upload a generated `.csv` + video via Dubbing
+1. **Enable `audio_isolation` on the release-test API key** and rerun the short
+   live Voice Isolation smoke test. Inspect the returned codec, sample rate, and
+   channel layout; the API contract does not guarantee them.
+2. **Sign and notarize the macOS artifact** before distributing it outside a
+   controlled internal test.
+3. **Real-world validate the CSV**: upload a generated `.csv` + video via Dubbing
    Studio → Manual Dub and confirm the project opens with correct clips/speakers.
    This is the one thing not covered by automated tests (strict-parser behavior).
-2. **Merge decision** for `dubbing-workflow` → `main` (owner's call). No GitHub
-   remote is configured for pushing/PR in this repo state.
-3. **Bump the pyproject version** if you cut a release (it still says `0.1.0`).
+4. **Merge decision** for the feature line → `main` (owner's call).
+5. **Bump both the pyproject version and packaged app version** for the next release.
 
 **Phase 2 (planned):** external EN→ES translation pass (Claude API or DeepL +
 project glossary) that fills the CSV `translation` column, QC'd in-app before upload.

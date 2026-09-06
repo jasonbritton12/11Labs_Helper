@@ -59,7 +59,7 @@ app = BUNDLE(
     icon=None,
     bundle_identifier="com.elevenlabshelper.app",
     info_plist={
-        "CFBundleShortVersionString": "0.1.0",
+        "CFBundleShortVersionString": "0.2.0",
         "NSHighResolutionCapable": True,
     },
 )

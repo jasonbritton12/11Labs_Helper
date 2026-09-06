@@ -10,7 +10,7 @@ from .elevenlabs.models import TranscriptionResult
 from .exporters.canonical import Transcript, apply_edits, build_transcript
 from .exporters.writer import write_deliverables
 from .history import delete_history, load_history, load_history_file, prune_history
-from .jobs.models import Job
+from .jobs.models import Job, JobType
 from .jobs.queue import JobQueue, UpdateCallback
 from .jobs.store import JobStore
 from .media.inspect import inspect, limit_warnings
@@ -20,15 +20,26 @@ class ReexportError(RuntimeError):
     """Raised when a job's canonical JSON can't be found for re-export."""
 
 
-def make_job(source: str | Path, settings: EngineSettings) -> Job:
+def make_job(
+    source: str | Path,
+    settings: EngineSettings,
+    *,
+    job_type: JobType = JobType.TRANSCRIPTION,
+) -> Job:
     """Create a queued Job for ``source`` using the given settings."""
     source = Path(source)
     out_dir = output_dir_for(source, settings)
     return Job(
         source_path=str(source),
         output_dir=str(out_dir),
+        job_type=job_type,
         params=settings.transcription.model_copy(deep=True),
-        deliverables=list(settings.deliverables),
+        deliverables=(
+            list(settings.deliverables)
+            if job_type == JobType.TRANSCRIPTION
+            else []
+        ),
+        message=("Dialog isolation" if job_type == JobType.VOICE_ISOLATION else ""),
     )
 
 
@@ -74,9 +85,15 @@ class Engine:
         if self._owns_store:
             self.store.close()
 
-    def add_source(self, source: str | Path, *, acknowledged_oversize: bool = False) -> Job:
+    def add_source(
+        self,
+        source: str | Path,
+        *,
+        acknowledged_oversize: bool = False,
+        job_type: JobType = JobType.TRANSCRIPTION,
+    ) -> Job:
         """Create + **stage** a job (does not run it — nothing hits the API until Run)."""
-        job = make_job(source, self.settings)
+        job = make_job(source, self.settings, job_type=job_type)
         annotate_facts(job)
         job.acknowledged_oversize = acknowledged_oversize
         self.queue.stage(job)

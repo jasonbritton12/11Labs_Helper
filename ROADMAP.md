@@ -8,6 +8,19 @@ and UX review gates. Items below are grouped by milestone.
 
 ## Next up
 
+### Voice Isolation Phase 1 — IMPLEMENTED ON `codex/voice-isolation-me`
+
+Adds a second engine workflow and desktop selector for ElevenLabs Voice
+Isolation. WAV, MP3, and MP4 sources are uploaded as-is only after the existing
+explicit **Run** action. The native response is streamed atomically to
+`<source>_DX.<format>`. The workflow uses the documented 500 MB / one-hour gate,
+shares the existing authentication/retry/cancel behavior, and remains available
+through both the GUI and `elevenlabs-helper isolate`.
+
+This phase does **not** create M&E, invert phase, align tracks, use FFmpeg, or
+promise a particular response codec/sample rate/channel layout. Those are held
+for a separately testable post-processing phase.
+
 ### Explicit "Run" — stage jobs instead of auto-running on drop — ✅ SHIPPED (v0.1.5)
 Implemented with a distinct **`STAGED`** job state (cleaner than the pause toggle:
 *every* drop stages, including files dropped mid-run). A global **Run** button
@@ -142,6 +155,10 @@ The original "throw any file at it" vision, plus more ElevenLabs features.
   into chunks, transcribe each, and re-merge with corrected SRT/VTT time offsets.
   (Note: `TranscriptionResult.offset()` already exists for this.)
 - **Higher-quality / lossless audio** options for dubbing-grade workflows.
+- **Derived M&E from isolated dialog:** inspect the API result, align and
+  gain-match it against the decoded source, invert/sum in floating point, and
+  render a 48 kHz 24-bit PCM result with objective and listening QC. Treat this
+  as best-effort separation rather than a replacement for original production stems.
 - **Dubbing / Dubbing Studio:** a new `processors/dubbing.py` implementing the
   same `Processor` interface (no queue/UI re-architecture needed). Strategy and
   phased plan in [docs/DUBBING_WORKFLOW.md](docs/DUBBING_WORKFLOW.md); Phase 1

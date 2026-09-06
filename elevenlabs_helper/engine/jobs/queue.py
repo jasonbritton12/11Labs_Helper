@@ -22,7 +22,8 @@ from ..processors.speech_to_text import (
     PermanentJobError,
     SpeechToTextProcessor,
 )
-from .models import TERMINAL_STATUSES, Job, JobStatus
+from ..processors.voice_isolation import VoiceIsolationProcessor
+from .models import TERMINAL_STATUSES, Job, JobStatus, JobType
 from .store import JobStore
 
 UpdateCallback = Callable[[Job], None]
@@ -38,13 +39,22 @@ class JobQueue:
         on_update: UpdateCallback | None = None,
         api_key_provider: Callable[[], str] = get_api_key,
         processor: Processor | None = None,
+        processors: dict[JobType, Processor] | None = None,
     ):
         self._store = store
         self._settings = settings
         self._base_url = base_url
         self._on_update = on_update
         self._api_key_provider = api_key_provider
-        self._processor = processor or SpeechToTextProcessor()
+        self._processor_override = processor
+        self._processors = (
+            processors
+            if processors is not None
+            else {
+                JobType.TRANSCRIPTION: SpeechToTextProcessor(),
+                JobType.VOICE_ISOLATION: VoiceIsolationProcessor(),
+            }
+        )
 
         self._pending: deque[str] = deque()
         self._cancels: dict[str, threading.Event] = {}
@@ -168,7 +178,7 @@ class JobQueue:
         )
         while True:  # retry in place, sequentially, with backoff
             try:
-                self._processor.run(job, ctx)
+                self._processor_for(job).run(job, ctx)
                 return
             except CanceledError:
                 job.status = JobStatus.CANCELED
@@ -213,6 +223,14 @@ class JobQueue:
             self._last_logged.pop(job.id, None)  # bound the dict over long sessions
         if self._on_update is not None:
             self._on_update(job)
+
+    def _processor_for(self, job: Job) -> Processor:
+        if self._processor_override is not None:
+            return self._processor_override
+        processor = self._processors.get(job.job_type)
+        if processor is None:
+            raise PermanentJobError(f"Unsupported job type: {job.job_type}")
+        return processor
 
     @staticmethod
     def _interruptible_sleep(seconds: float, cancel_ev: threading.Event) -> bool:

@@ -18,6 +18,10 @@ from pydantic import BaseModel, Field, field_validator
 ELEVENLABS_MAX_FILE_BYTES: int = 5 * 1024**3        # 5 GB
 ELEVENLABS_MAX_DURATION_SECS: float = 10 * 3600.0   # ~10 hours
 
+# Voice Isolation has a separate, much smaller upload envelope.
+VOICE_ISOLATION_MAX_FILE_BYTES: int = 500 * 1024**2  # 500 MB
+VOICE_ISOLATION_MAX_DURATION_SECS: float = 60 * 60.0 # 1 hour
+
 
 class Deliverable(str, Enum):
     SRT = "srt"

@@ -4,6 +4,7 @@ V1 uploads a ready audio file (e.g. .mp3) directly; no conversion.
 
 Examples:
     elevenlabs-helper transcribe clip.mp3 --out ./out --formats srt,vtt,docx
+    elevenlabs-helper isolate interview.mp4 --out ./out
     elevenlabs-helper inspect clip.mp3
 """
 
@@ -16,10 +17,17 @@ from pathlib import Path
 from .auth import MissingApiKeyError, get_api_key
 from .config import DEFAULT_DELIVERABLES, Deliverable, EngineSettings
 from .exporters.writer import write_deliverables
-from .jobs.models import Job, JobStatus
-from .media.inspect import human_duration, human_size, inspect, limit_warnings
+from .jobs.models import Job, JobStatus, JobType
+from .media.inspect import (
+    human_duration,
+    human_size,
+    inspect,
+    limit_warnings,
+    voice_isolation_limit_warnings,
+)
 from .processors.base import ProcessContext
 from .processors.speech_to_text import SpeechToTextProcessor
+from .processors.voice_isolation import VoiceIsolationProcessor
 from .service import make_job
 
 
@@ -67,6 +75,51 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
         if warnings and not args.force:
             for w in warnings:
                 print(f"  WARNING: {w}", file=sys.stderr)
+            print("  Skipping (re-run with --force to try anyway).", file=sys.stderr)
+            exit_code = 1
+            continue
+        job.acknowledged_oversize = bool(warnings)
+
+        print(f"==> {Path(source).name} -> {job.output_dir}", file=sys.stderr)
+        try:
+            processor.run(job, ctx)
+        except Exception as exc:  # noqa: BLE001 - CLI surfaces any failure
+            job.status = JobStatus.FAILED
+            job.error = str(exc)
+            print(f"  FAILED: {exc}", file=sys.stderr)
+            exit_code = 1
+            continue
+        for kind, path in sorted(job.artifacts.items()):
+            print(f"  {kind}: {path}")
+    return exit_code
+
+
+def cmd_isolate(args: argparse.Namespace) -> int:
+    """Run the Voice Isolation workflow explicitly for one or more files."""
+    try:
+        api_key = get_api_key()
+    except MissingApiKeyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    settings = EngineSettings.load()
+    if args.out:
+        settings.output_root = Path(args.out)
+    processor = VoiceIsolationProcessor()
+    ctx = ProcessContext(
+        api_key=api_key, settings=settings, base_url=args.base_url, on_progress=_progress
+    )
+
+    exit_code = 0
+    for source in args.inputs:
+        job = make_job(source, settings, job_type=JobType.VOICE_ISOLATION)
+        try:
+            warnings = voice_isolation_limit_warnings(inspect(source))
+        except Exception:
+            warnings = []
+        if warnings and not args.force:
+            for warning in warnings:
+                print(f"  WARNING: {warning}", file=sys.stderr)
             print("  Skipping (re-run with --force to try anyway).", file=sys.stderr)
             exit_code = 1
             continue
@@ -153,6 +206,20 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--force", action="store_true", help="Proceed even if over ElevenLabs limits")
     t.add_argument("--base-url", default="https://api.elevenlabs.io")
     t.set_defaults(func=cmd_transcribe)
+
+    i = sub.add_parser(
+        "isolate",
+        help="Extract dialog from WAV, MP3, or MP4 with ElevenLabs Voice Isolation",
+    )
+    i.add_argument("inputs", nargs="+", help="Source WAV, MP3, or MP4 files")
+    i.add_argument("--out", help="Output root dir (default: alongside each source)")
+    i.add_argument(
+        "--force",
+        action="store_true",
+        help="Proceed even if over Voice Isolation size/duration limits",
+    )
+    i.add_argument("--base-url", default="https://api.elevenlabs.io")
+    i.set_defaults(func=cmd_isolate)
 
     e = sub.add_parser("inspect", help="Show file size/duration and any limit warnings")
     e.add_argument("inputs", nargs="+")

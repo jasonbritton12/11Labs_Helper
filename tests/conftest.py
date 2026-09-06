@@ -51,6 +51,20 @@ def dummy_mp3(tmp_path) -> str:
     return str(path)
 
 
+@pytest.fixture
+def dummy_wav(tmp_path) -> str:
+    path = tmp_path / "sample.wav"
+    path.write_bytes(b"RIFF" + b"\x00" * 4 + b"WAVE" + b"\x00" * 1024)
+    return str(path)
+
+
+@pytest.fixture
+def dummy_mp4(tmp_path) -> str:
+    path = tmp_path / "sample.mp4"
+    path.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 1024)
+    return str(path)
+
+
 @pytest.fixture(scope="session")
 def real_mp3(tmp_path_factory) -> str:
     """A genuine short .mp3 (built with ffmpeg if available) for duration-reading tests."""
@@ -80,7 +94,9 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         server = self.server
         length = int(self.headers.get("Content-Length", 0))
-        self.rfile.read(length)  # drain the multipart upload
+        body = self.rfile.read(length)  # drain the multipart upload
+        server.last_body = body
+        server.post_paths.append(self.path)
         server.calls += 1
 
         if not self.headers.get("xi-api-key"):
@@ -89,6 +105,9 @@ class _Handler(BaseHTTPRequestHandler):
         if server.fail_times > 0:
             server.fail_times -= 1
             self._send(server.fail_status, {"detail": "transient"})
+            return
+        if self.path == "/v1/audio-isolation":
+            self._send_bytes(200, server.isolation_result, server.isolation_content_type)
             return
         self._send(200, server.result)
 
@@ -100,6 +119,13 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _send_bytes(self, code: int, body: bytes, content_type: str) -> None:
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
 
 @pytest.fixture
 def mock_elevenlabs():
@@ -108,6 +134,10 @@ def mock_elevenlabs():
     server.fail_times = 0
     server.fail_status = 429
     server.result = CANNED_RESULT
+    server.isolation_result = b"ID3\x04\x00" + b"isolated-dialog" * 64
+    server.isolation_content_type = "audio/mpeg"
+    server.last_body = b""
+    server.post_paths = []
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     host, port = server.server_address

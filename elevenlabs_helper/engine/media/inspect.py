@@ -10,9 +10,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..config import ELEVENLABS_MAX_DURATION_SECS, ELEVENLABS_MAX_FILE_BYTES
+from ..config import (
+    ELEVENLABS_MAX_DURATION_SECS,
+    ELEVENLABS_MAX_FILE_BYTES,
+    VOICE_ISOLATION_MAX_DURATION_SECS,
+    VOICE_ISOLATION_MAX_FILE_BYTES,
+)
 
-SUPPORTED_SUFFIXES = {".mp3"}  # V1 scope; widen on the roadmap
+TRANSCRIPTION_SUFFIXES = {".mp3"}
+VOICE_ISOLATION_SUFFIXES = {".mp3", ".mp4", ".wav"}
+# Backward-compatible name used by existing transcription callers.
+SUPPORTED_SUFFIXES = TRANSCRIPTION_SUFFIXES
 
 
 @dataclass(frozen=True)
@@ -59,6 +67,25 @@ def limit_warnings(info: MediaInfo) -> list[str]:
         warnings.append(
             f"Duration is {human_duration(info.duration_secs)} — over the "
             f"{human_duration(ELEVENLABS_MAX_DURATION_SECS)} ElevenLabs limit."
+        )
+    return warnings
+
+
+def voice_isolation_limit_warnings(info: MediaInfo) -> list[str]:
+    """Return reasons a file may exceed the Voice Isolation API envelope."""
+    warnings: list[str] = []
+    if info.size_bytes > VOICE_ISOLATION_MAX_FILE_BYTES:
+        warnings.append(
+            f"File is {human_size(info.size_bytes)} — over the "
+            f"{human_size(VOICE_ISOLATION_MAX_FILE_BYTES)} Voice Isolation limit."
+        )
+    if (
+        info.duration_secs is not None
+        and info.duration_secs > VOICE_ISOLATION_MAX_DURATION_SECS
+    ):
+        warnings.append(
+            f"Duration is {human_duration(info.duration_secs)} — over the "
+            f"{human_duration(VOICE_ISOLATION_MAX_DURATION_SECS)} Voice Isolation limit."
         )
     return warnings
 

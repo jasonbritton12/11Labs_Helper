@@ -5,7 +5,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFileDialog, QFrame, QLabel, QPushButton, QVBoxLayout
 
-# V1 scope: a single ready-to-upload .mp3 (conversion + more formats on the roadmap).
 MEDIA_SUFFIXES = {".mp3"}
 
 
@@ -24,15 +23,17 @@ class DropArea(QFrame):
         )
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
-        label = QLabel(
+        self._label = QLabel(
             "Drop .mp3 files to stage — then press Run to transcribe\n"
             "(export audio first — video & auto-conversion are on the roadmap)"
         )
-        label.setAlignment(Qt.AlignCenter)
+        self._label.setAlignment(Qt.AlignCenter)
+        self._suffixes = set(MEDIA_SUFFIXES)
+        self._file_filter = "Audio (*.mp3);;All files (*)"
         browse = QPushButton("Add files…")
         browse.setMaximumWidth(160)
         browse.clicked.connect(self._browse)
-        layout.addWidget(label)
+        layout.addWidget(self._label)
         layout.addWidget(browse, alignment=Qt.AlignCenter)
 
     def _set_hover(self, on: bool) -> None:
@@ -60,13 +61,28 @@ class DropArea(QFrame):
 
     def _browse(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Select audio files", "", "Audio (*.mp3);;All files (*)"
+            self, "Select media files", "", self._file_filter
         )
-        if paths:
-            self.filesDropped.emit(paths)
+        accepted = [path for path in paths if self._is_media(path)]
+        rejected = len(paths) - len(accepted)
+        if accepted:
+            self.filesDropped.emit(accepted)
+        if rejected:
+            self.filesRejected.emit(rejected)
 
-    @staticmethod
-    def _is_media(path: str) -> bool:
+    def configure(
+        self,
+        *,
+        suffixes: set[str],
+        prompt: str,
+        file_filter: str,
+    ) -> None:
+        """Set accepted files and visible guidance for the selected workflow."""
+        self._suffixes = {suffix.lower() for suffix in suffixes}
+        self._file_filter = file_filter
+        self._label.setText(prompt)
+
+    def _is_media(self, path: str) -> bool:
         from pathlib import Path
 
-        return Path(path).suffix.lower() in MEDIA_SUFFIXES
+        return Path(path).suffix.lower() in self._suffixes

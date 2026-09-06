@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...engine.jobs.models import Job, JobStatus
+from ...engine.jobs.models import Job, JobStatus, JobType
 from ..reexport_action import reexport_with_prompt
 
 _COLUMNS = ["File", "Date", "Status", "Actions"]
@@ -31,13 +31,13 @@ class HistoryDialog(QDialog):
     def __init__(self, engine, parent=None):
         super().__init__(parent)
         self.engine = engine
-        self.setWindowTitle("Transcript History")
+        self.setWindowTitle("Job History")
         self.resize(740, 480)
         root = QVBoxLayout(self)
 
         intro = QLabel(
-            "All transcripts you've made, including ones cleared from the main list. "
-            "Re-export any of them for free, or delete them permanently."
+            "Past transcription and dialog-isolation jobs, including ones cleared "
+            "from the main list."
         )
         intro.setWordWrap(True)
         root.addWidget(intro)
@@ -62,7 +62,7 @@ class HistoryDialog(QDialog):
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         for i in range(1, len(_COLUMNS)):
             header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
-        self.empty = QLabel("No transcripts yet.\nTranscribe a file and it will appear here.")
+        self.empty = QLabel("No jobs yet.\nProcess a file and it will appear here.")
         self.empty.setAlignment(Qt.AlignCenter)
         self.empty.setStyleSheet("color: gray;")
         self.stack.addWidget(self.table)
@@ -84,8 +84,8 @@ class HistoryDialog(QDialog):
         if not jobs:
             no_search = not self.search.text().strip()
             self.empty.setText(
-                "No transcripts yet.\nTranscribe a file and it will appear here."
-                if no_search else "No transcripts match your search."
+                "No jobs yet.\nProcess a file and it will appear here."
+                if no_search else "No jobs match your search."
             )
         self.table.setRowCount(0)
         for job in jobs:
@@ -105,7 +105,7 @@ class HistoryDialog(QDialog):
         lay.setContentsMargins(2, 2, 2, 2)
         lay.setSpacing(4)
 
-        if job.status == JobStatus.DONE:
+        if job.status == JobStatus.DONE and job.job_type == JobType.TRANSCRIPTION:
             has_history = bool(job.history_json and Path(job.history_json).exists())
             reexport = QPushButton("Re-export…")
             reexport.setEnabled(has_history)
@@ -115,7 +115,8 @@ class HistoryDialog(QDialog):
             lay.addWidget(reexport)
         elif job.status == JobStatus.FAILED:
             requeue = QPushButton("Requeue")
-            requeue.setToolTip("Try transcribing again (uses credits)")
+            action = "dialog isolation" if job.job_type == JobType.VOICE_ISOLATION else "transcription"
+            requeue.setToolTip(f"Try {action} again (uses credits)")
             requeue.clicked.connect(lambda: self._requeue(job.id))
             lay.addWidget(requeue)
 
@@ -124,7 +125,7 @@ class HistoryDialog(QDialog):
         lay.addWidget(reveal)
 
         delete = QPushButton("Delete…")
-        delete.setToolTip("Permanently delete this transcript (removes the recoverable copy)")
+        delete.setToolTip("Permanently delete this app history record")
         delete.clicked.connect(lambda: self._delete(job))
         lay.addWidget(delete)
         lay.addStretch()
@@ -136,8 +137,14 @@ class HistoryDialog(QDialog):
             reexport_with_prompt(self, self.engine, job)
 
     def _requeue(self, job_id: str) -> None:
+        job = self.engine.store.get(job_id)
         self.engine.requeue(job_id)
-        QMessageBox.information(self, "Requeued", "The job was re-queued for transcription.")
+        action = (
+            "dialog isolation"
+            if job and job.job_type == JobType.VOICE_ISOLATION
+            else "transcription"
+        )
+        QMessageBox.information(self, "Requeued", f"The job was re-queued for {action}.")
         self._reload()
 
     def _reveal(self, job: Job) -> None:
@@ -150,9 +157,9 @@ class HistoryDialog(QDialog):
     def _delete(self, job: Job) -> None:
         if QMessageBox.question(
             self, "Delete permanently?",
-            f"Permanently delete the saved transcript for “{job.source_name}”?\n\n"
-            "This removes the recoverable copy — re-export will no longer be possible "
-            "without re-transcribing (which costs credits).",
+            f"Permanently delete the app history record for “{job.source_name}”?\n\n"
+            "Files already saved in the output folder remain on disk. Transcript "
+            "re-export will no longer be available for a deleted transcription record.",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         ) == QMessageBox.Yes:
             self.engine.delete_permanently(job.id)

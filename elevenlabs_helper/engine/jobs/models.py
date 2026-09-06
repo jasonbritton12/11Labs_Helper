@@ -11,11 +11,19 @@ from pydantic import BaseModel, Field
 from ..config import Deliverable, TranscriptionParams
 
 
+class JobType(str, Enum):
+    """The engine workflow a persisted job should run."""
+
+    TRANSCRIPTION = "transcription"
+    VOICE_ISOLATION = "voice_isolation"
+
+
 class JobStatus(str, Enum):
     STAGED = "staged"        # added but not yet run — nothing hits the API until "Run"
     QUEUED = "queued"
     UPLOADING = "uploading"
     TRANSCRIBING = "transcribing"
+    ISOLATING = "isolating"
     EXPORTING = "exporting"
     DONE = "done"
     FAILED = "failed"
@@ -34,6 +42,8 @@ class Job(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     source_path: str
     output_dir: str
+    # Default keeps jobs written by older app versions backward-compatible.
+    job_type: JobType = JobType.TRANSCRIPTION
     params: TranscriptionParams = Field(default_factory=TranscriptionParams)
     deliverables: list[Deliverable] = Field(default_factory=list)
 

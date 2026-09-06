@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QComboBox,
     QTableWidget,
     QTableWidgetItem,
     QToolButton,
@@ -27,8 +28,16 @@ from PySide6.QtWidgets import (
 
 from ...engine import auth
 from ...engine.elevenlabs.client import friendly_error
-from ...engine.jobs.models import TERMINAL_STATUSES, Job, JobStatus
-from ...engine.media.inspect import human_duration, human_size, inspect, limit_warnings
+from ...engine.jobs.models import TERMINAL_STATUSES, Job, JobStatus, JobType
+from ...engine.media.inspect import (
+    TRANSCRIPTION_SUFFIXES,
+    VOICE_ISOLATION_SUFFIXES,
+    human_duration,
+    human_size,
+    inspect,
+    limit_warnings,
+    voice_isolation_limit_warnings,
+)
 from ...engine.service import Engine
 from ..bridge import EngineBridge
 from ..reexport_action import reexport_with_prompt
@@ -40,7 +49,7 @@ from .history_dialog import HistoryDialog
 from .speaker_qc_dialog import SpeakerQCDialog
 
 _COLUMNS = ["File", "Status", "Progress", "Size / Duration", "Actions"]
-_BUSY_STATUSES = {JobStatus.UPLOADING, JobStatus.TRANSCRIBING}
+_BUSY_STATUSES = {JobStatus.UPLOADING, JobStatus.TRANSCRIBING, JobStatus.ISOLATING}
 
 
 class MainWindow(QMainWindow):
@@ -51,6 +60,7 @@ class MainWindow(QMainWindow):
         self._rows: dict[str, int] = {}  # job_id -> row index
         self._busy_since: dict[str, float] = {}  # job_id -> monotonic start of busy state
         self._busy_base: dict[str, str] = {}     # job_id -> base status label (without elapsed)
+        self._selected_job_type = JobType.TRANSCRIPTION
 
         self.setWindowTitle("ElevenLabs Helper")
         self.resize(860, 580)
@@ -66,12 +76,12 @@ class MainWindow(QMainWindow):
         key_btn = QPushButton("API Key")
         key_btn.clicked.connect(self._open_key)
         history_btn = QPushButton("History…")
-        history_btn.setToolTip("Browse & recover past transcripts (re-export for free)")
+        history_btn.setToolTip("Browse past transcription and dialog-isolation jobs")
         history_btn.clicked.connect(self._open_history)
         clear_btn = QPushButton("Clear completed")
         clear_btn.clicked.connect(self._clear_completed)
         self.run_btn = QPushButton("Run")
-        self.run_btn.setToolTip("Transcribe all staged files (this spends credits)")
+        self.run_btn.setToolTip("Process all staged files (this spends ElevenLabs credits)")
         self.run_btn.clicked.connect(self._run_staged)
         self.run_btn.setEnabled(False)
         # Prominent primary-action styling (L1); muted when there's nothing to run.
@@ -82,6 +92,12 @@ class MainWindow(QMainWindow):
         )
         topbar.addWidget(settings_btn)
         topbar.addWidget(key_btn)
+        topbar.addWidget(QLabel("Workflow:"))
+        self.workflow_combo = QComboBox()
+        self.workflow_combo.addItem("Transcribe", JobType.TRANSCRIPTION.value)
+        self.workflow_combo.addItem("Isolate dialog", JobType.VOICE_ISOLATION.value)
+        self.workflow_combo.currentIndexChanged.connect(self._workflow_changed)
+        topbar.addWidget(self.workflow_combo)
         topbar.addStretch()
         topbar.addWidget(self.run_btn)
         topbar.addWidget(history_btn)
@@ -91,8 +107,8 @@ class MainWindow(QMainWindow):
         # Privacy disclosure (F1) + storage clarity (U7).
         # Use the theme's default text color (adapts to light/dark, meets contrast); 12px.
         disclosure = QLabel(
-            "Audio you add is uploaded to ElevenLabs for transcription; "
-            "transcripts are saved to your output folder (shown below)."
+            "Media you add is uploaded to ElevenLabs for the selected workflow; "
+            "results are saved to your output folder (shown below)."
         )
         disclosure.setStyleSheet("font-size: 12px;")
         disclosure.setWordWrap(True)
@@ -104,7 +120,7 @@ class MainWindow(QMainWindow):
             "QFrame { background: rgba(192,57,43,0.10); border: 1px solid #c0392b; border-radius: 8px; }"
         )
         banner_layout = QHBoxLayout(self.key_banner)
-        banner_layout.addWidget(QLabel("Add your ElevenLabs API key to start transcribing."))
+        banner_layout.addWidget(QLabel("Add your ElevenLabs API key to process media."))
         add_key_btn = QPushButton("Add API key…")
         add_key_btn.clicked.connect(self._open_key)
         banner_layout.addStretch()
@@ -115,6 +131,7 @@ class MainWindow(QMainWindow):
         self.drop = DropArea()
         self.drop.filesDropped.connect(self._add_files)
         self.drop.filesRejected.connect(self._on_files_rejected)
+        self._configure_drop_area()
         layout.addWidget(self.drop)
 
         # Table
@@ -161,9 +178,34 @@ class MainWindow(QMainWindow):
         self.key_banner.setVisible(not has_key)
         self.drop.setEnabled(has_key)
 
+    def _workflow_changed(self, _index: int) -> None:
+        self._selected_job_type = JobType(self.workflow_combo.currentData())
+        self._configure_drop_area()
+
+    def _configure_drop_area(self) -> None:
+        if self._selected_job_type == JobType.VOICE_ISOLATION:
+            self.drop.configure(
+                suffixes=VOICE_ISOLATION_SUFFIXES,
+                prompt=(
+                    "Drop WAV, MP3, or MP4 files to stage — then press Run\n"
+                    "ElevenLabs will return a dialog-only audio file"
+                ),
+                file_filter="Media (*.wav *.mp3 *.mp4);;All files (*)",
+            )
+        else:
+            self.drop.configure(
+                suffixes=TRANSCRIPTION_SUFFIXES,
+                prompt=(
+                    "Drop .mp3 files to stage — then press Run to transcribe\n"
+                    "(export audio first — transcription remains MP3-only)"
+                ),
+                file_filter="Audio (*.mp3);;All files (*)",
+            )
+
     # --- adding work ---------------------------------------------------------
     def _add_files(self, paths: list[str]) -> None:
         added = 0
+        job_type = self._selected_job_type
         for path in paths:
             # Oversize gate (warn + acknowledge): size via stat, duration via mutagen.
             info = None
@@ -171,11 +213,20 @@ class MainWindow(QMainWindow):
                 info = inspect(path)
             except Exception:
                 pass
-            warnings = limit_warnings(info) if info else []
+            warnings = (
+                voice_isolation_limit_warnings(info)
+                if info and job_type == JobType.VOICE_ISOLATION
+                else limit_warnings(info) if info else []
+            )
             if warnings:
                 msg = "\n".join(warnings)
                 if info and info.duration_secs is None:
-                    msg += "\n(Duration couldn't be read — it may also exceed the 10 h limit.)"
+                    limit_text = (
+                        "1 h Voice Isolation limit"
+                        if job_type == JobType.VOICE_ISOLATION
+                        else "10 h transcription limit"
+                    )
+                    msg += f"\n(Duration couldn't be read — it may also exceed the {limit_text}.)"
                 msg += "\n\nUpload anyway? ElevenLabs may reject it."
                 choice = QMessageBox.warning(
                     self, "File may exceed ElevenLabs limits", msg,
@@ -184,15 +235,20 @@ class MainWindow(QMainWindow):
                 if choice != QMessageBox.Ok:
                     continue
             try:
-                job = self.engine.add_source(path, acknowledged_oversize=bool(warnings))
+                job = self.engine.add_source(
+                    path,
+                    acknowledged_oversize=bool(warnings),
+                    job_type=job_type,
+                )
             except Exception as exc:  # noqa: BLE001
                 QMessageBox.warning(self, "Could not add file", f"{path}\n\n{exc}")
                 continue
             self._render_job(job)
             added += 1
         if added:
+            action = "isolate dialog" if job_type == JobType.VOICE_ISOLATION else "transcribe"
             self.statusBar().showMessage(
-                f"Staged {added} file(s) — press Run to transcribe.", 6000)
+                f"Staged {added} file(s) — press Run to {action}.", 6000)
         self._update_run_button()
 
     def _busy_label(self, job_id: str) -> str:
@@ -212,9 +268,12 @@ class MainWindow(QMainWindow):
 
     def _on_files_rejected(self, count: int) -> None:
         n = f"{count} file{'s' if count != 1 else ''}"
-        self.statusBar().showMessage(
-            f"Only .mp3 is supported in this version — export an MP3 first. Ignored {n}.", 8000
+        accepted = (
+            "WAV, MP3, or MP4"
+            if self._selected_job_type == JobType.VOICE_ISOLATION
+            else "MP3"
         )
+        self.statusBar().showMessage(f"This workflow accepts {accepted}. Ignored {n}.", 8000)
 
     # --- table rendering -----------------------------------------------------
     def _on_job_updated(self, job: Job) -> None:
@@ -247,7 +306,10 @@ class MainWindow(QMainWindow):
         if job.status == JobStatus.FAILED:
             status_text = friendly_error(job.error or job.message)
         elif job.status == JobStatus.DONE:
-            status_text = "Completed — no speech detected" if no_speech else "Completed"
+            if job.job_type == JobType.VOICE_ISOLATION:
+                status_text = "Dialog isolated"
+            else:
+                status_text = "Completed — no speech detected" if no_speech else "Completed"
         elif job.status in _BUSY_STATUSES:
             base = job.status.value.capitalize()
             if job.size_bytes:
@@ -308,20 +370,31 @@ class MainWindow(QMainWindow):
         primary: tuple[str, object] | None = None
         menu_items: list[tuple[str, object]] = []
         if job.status == JobStatus.STAGED:
-            primary = ("Options", lambda: self._open_job_options(job.id))
-            menu_items = [("Remove", lambda: self._remove_staged(job.id))]
+            if job.job_type == JobType.TRANSCRIPTION:
+                primary = ("Options", lambda: self._open_job_options(job.id))
+                menu_items = [("Remove", lambda: self._remove_staged(job.id))]
+            else:
+                primary = ("Remove", lambda: self._remove_staged(job.id))
         elif job.status == JobStatus.QUEUED:
-            primary = ("Options", lambda: self._open_job_options(job.id))
-            menu_items = [("Cancel", lambda: self._cancel_job(job.id))]
+            if job.job_type == JobType.TRANSCRIPTION:
+                primary = ("Options", lambda: self._open_job_options(job.id))
+                menu_items = [("Cancel", lambda: self._cancel_job(job.id))]
+            else:
+                primary = ("Cancel", lambda: self._cancel_job(job.id))
         elif job.status not in TERMINAL_STATUSES:  # active (uploading/transcribing/retrying)
             primary = ("Cancel", lambda: self._cancel_job(job.id))
         elif job.status == JobStatus.DONE:
             # Reveal is the most common action on a finished job (K1); re-export is
             # the rarer recovery path, kept a click away in the menu.
             primary = ("Reveal", lambda: self._reveal(job))
-            menu_items = [("Review speakers…", lambda: self._open_speaker_qc(job.id)),
-                          ("Re-export…", lambda: self._reexport(job.id)),
-                          ("Remove from list", lambda: self._remove_job(job.id))]
+            if job.job_type == JobType.TRANSCRIPTION:
+                menu_items = [
+                    ("Review speakers…", lambda: self._open_speaker_qc(job.id)),
+                    ("Re-export…", lambda: self._reexport(job.id)),
+                    ("Remove from list", lambda: self._remove_job(job.id)),
+                ]
+            else:
+                menu_items = [("Remove from list", lambda: self._remove_job(job.id))]
         else:  # FAILED / CANCELED
             primary = ("Retry", lambda: self.engine.queue.retry(job.id))
             menu_items = [("Reveal", lambda: self._reveal(job)),
@@ -390,7 +463,11 @@ class MainWindow(QMainWindow):
 
     def _open_job_options(self, job_id: str) -> None:
         job = self.engine.store.get(job_id)
-        if job is None or job.status not in self._EDITABLE:
+        if (
+            job is None
+            or job.status not in self._EDITABLE
+            or job.job_type != JobType.TRANSCRIPTION
+        ):
             return
         dialog = JobOptionsDialog(job, self)
         if dialog.exec():
@@ -420,7 +497,7 @@ class MainWindow(QMainWindow):
                 self.engine.archive(job.id)
         self._reload_table()
         self.statusBar().showMessage(
-            "Cleared from the list. Recover any transcript from History.", 5000
+            "Cleared from the list. Review archived jobs in History.", 5000
         )
 
     def _open_history(self) -> None:

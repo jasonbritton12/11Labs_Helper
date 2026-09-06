@@ -100,6 +100,7 @@ class JobStore:
             JobStatus.QUEUED,
             JobStatus.UPLOADING,
             JobStatus.TRANSCRIBING,
+            JobStatus.ISOLATING,
             JobStatus.EXPORTING,
             JobStatus.RETRYING,
         )
