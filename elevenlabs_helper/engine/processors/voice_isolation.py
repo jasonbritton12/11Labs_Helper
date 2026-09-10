@@ -75,6 +75,6 @@ class VoiceIsolationProcessor(Processor):
         job.artifacts["dialog"] = str(output)
         job.status = JobStatus.DONE
         job.progress = 1.0
-        job.message = "Dialog isolated"
+        job.message = "AI dialog reference created"
         job.error = None
         ctx.emit(job)

@@ -1,25 +1,27 @@
 # Roadmap
 
 Tracks work intentionally deferred out of V1. V1 (single-`.mp3` → ElevenLabs
-Scribe → SRT/VTT/DOCX) is built, tested (40 passing), and cleared the engineering
-and UX review gates. Items below are grouped by milestone.
+Scribe → SRT/VTT/DOCX) is built, and the current feature branch passes 96 tests
+with two billable live checks skipped by default. Items below are grouped by
+milestone.
 
 ---
 
 ## Next up
 
-### Voice Isolation Phase 1 — IMPLEMENTED ON `codex/voice-isolation-me`
+### Voice Isolation utility — IMPLEMENTED, EXPERIMENTAL / DE-PRIORITIZED
 
-Adds a second engine workflow and desktop selector for ElevenLabs Voice
-Isolation. WAV, MP3, and MP4 sources are uploaded as-is only after the existing
-explicit **Run** action. The native response is streamed atomically to
-`<source>_DX.<format>`. The workflow uses the documented 500 MB / one-hour gate,
-shares the existing authentication/retry/cancel behavior, and remains available
-through both the GUI and `elevenlabs-helper isolate`.
+Adds a secondary engine workflow for ElevenLabs Voice Isolation. It remains
+available through **Tools → Voice Isolation (Experimental)…** and
+`elevenlabs-helper isolate`, but is no longer presented as a peer to the main
+transcription workflow. WAV, MP3, and MP4 sources are uploaded as-is only after
+the existing explicit **Run** action. The native response is streamed atomically
+to `<source>_DX.<format>`. The workflow uses the documented 500 MB / one-hour
+gate and shares the existing authentication/retry/cancel behavior.
 
-This phase does **not** create M&E, invert phase, align tracks, use FFmpeg, or
-promise a particular response codec/sample rate/channel layout. Those are held
-for a separately testable post-processing phase.
+The output is explicitly described as an AI-isolated dialog reference, not a
+phase-coherent production DX stem. It does not promise a particular response
+codec, sample rate, or channel layout.
 
 ### Explicit "Run" — stage jobs instead of auto-running on drop — ✅ SHIPPED (v0.1.5)
 Implemented with a distinct **`STAGED`** job state (cleaner than the pause toggle:
@@ -54,6 +56,21 @@ API until the user says so.
   job never calls the API.
 
 **Why:** intentional spend — the top request after v0.1.4.
+
+## Evaluated and retired
+
+### M&E through Voice Isolation phase subtraction — NOT PLANNED
+
+User acceptance confirmed that the isolation endpoint can produce a useful
+dialog-only reference, but its output is not sample- and phase-identical to the
+dialog contribution in the source mix. Inverting or subtracting it therefore
+leaves dialog residue and damages music/effects; further alignment cannot make
+the processed signal reliably null.
+
+For delivery-grade M&E, obtain original stems or an official M&E. A future
+approximate workflow could evaluate dedicated source separation plus manual
+reconstruction and listening QC, but that is a different capability and must not
+be represented as recovered production stems.
 
 ### Universal caption interpretation layer — PLANNED
 
@@ -155,10 +172,6 @@ The original "throw any file at it" vision, plus more ElevenLabs features.
   into chunks, transcribe each, and re-merge with corrected SRT/VTT time offsets.
   (Note: `TranscriptionResult.offset()` already exists for this.)
 - **Higher-quality / lossless audio** options for dubbing-grade workflows.
-- **Derived M&E from isolated dialog:** inspect the API result, align and
-  gain-match it against the decoded source, invert/sum in floating point, and
-  render a 48 kHz 24-bit PCM result with objective and listening QC. Treat this
-  as best-effort separation rather than a replacement for original production stems.
 - **Dubbing / Dubbing Studio:** a new `processors/dubbing.py` implementing the
   same `Processor` interface (no queue/UI re-architecture needed). Strategy and
   phased plan in [docs/DUBBING_WORKFLOW.md](docs/DUBBING_WORKFLOW.md); Phase 1

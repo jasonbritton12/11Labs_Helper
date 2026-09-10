@@ -1,6 +1,6 @@
 # ElevenLabs Helper — Project Handoff
 
-*Last updated: 2026-09-05. Written for an engineer (or a future session) picking
+*Last updated: 2026-09-09. Written for an engineer (or a future session) picking
 this project up cold. Pair this with [ROADMAP.md](../ROADMAP.md) for forward work
 and [DUBBING_WORKFLOW.md](DUBBING_WORKFLOW.md) for the dubbing strategy.*
 
@@ -8,15 +8,16 @@ and [DUBBING_WORKFLOW.md](DUBBING_WORKFLOW.md) for the dubbing strategy.*
 
 ## 1. What this is
 
-A macOS desktop app that uploads media to **ElevenLabs Speech-to-Text (Scribe)**
-or **Voice Isolation**, runs a batch queue, and produces transcript deliverables
-(SRT / VTT / DOCX / JSON) or a native dialog-only audio file.
+A macOS desktop app centered on **ElevenLabs Speech-to-Text (Scribe)** that runs
+a batch queue and produces transcript deliverables (SRT / VTT / DOCX / JSON).
+It also retains **Voice Isolation** as a de-prioritized experimental utility that
+produces a native AI-isolated dialog reference.
 It is built as a **pure, headless engine** with a thin **PySide6 GUI** on top, so
 the same core runs as a CLI or in a container for cloud workflows (e.g. SDVI Rally).
 
 The current feature line also includes **dubbing-workflow prep** — speaker QC
 and a Manual-Dub CSV export that feed ElevenLabs Dubbing Studio for
-English→Spanish dubbing — plus Phase 1 dialog isolation.
+English→Spanish dubbing — plus the experimental dialog-isolation utility.
 
 **Current version:** `0.2.0` in [pyproject.toml](../pyproject.toml).
 
@@ -28,20 +29,22 @@ English→Spanish dubbing — plus Phase 1 dialog isolation.
 |---|---|
 | **Current branch** | `codex/voice-isolation-me` (based on `dubbing-workflow` at `2bd5cff`) |
 | **Main branch** | `main` (HEAD `34da1f4`) |
-| **Feature status** | Voice Isolation Phase 1 implemented and packaged on the feature branch |
-| **Tests** | 94 passing, 2 opt-in live API checks skipped by default |
-| **Not yet on main** | dubbing-workflow changes plus Voice Isolation Phase 1 |
+| **Feature status** | Voice Isolation retained as an experimental Tools-menu utility |
+| **Tests** | 96 passing, 2 opt-in live API checks skipped by default |
+| **Not yet on main** | dubbing-workflow changes plus the experimental Voice Isolation utility |
 
-Release validation produced an arm64 `0.2.0` app and DMG, verified the frozen
-Voice Isolation modules, launched the packaged app, selected **Isolate dialog**,
-and staged a 48 kHz/24-bit WAV without contacting ElevenLabs. The DMG SHA-256 was
-`45757b6fe9ded1d359acaac9836d74ab99f6f57467b07619878e25ec4badcec7`.
+User acceptance confirmed that Voice Isolation produces a useful dialog-only
+reference, but not a signal that can be inverted against the source to recover
+M&E. The main screen is therefore transcription-only; **Tools → Voice Isolation
+(Experimental)…** shows a suitability warning before staging WAV/MP3/MP4 input.
+The engine and CLI remain available. Phase-derived M&E is retired.
 
-One live request reached `POST /v1/audio-isolation` but was rejected before
-processing because the saved scoped API key lacks the `audio_isolation`
-permission (`HTTP 401 missing_permissions`). Re-run the live gate with that
-permission enabled before tagging a release. The local build is ad-hoc signed
-only and is not notarized.
+Packaged-app validation rebuilt and launched the arm64 `0.2.0` bundle, confirmed
+the main-page workflow selector is absent, opened the experimental Tools action,
+verified the phase-coherence/M&E warning and staged-before-Run disclosure, then
+canceled without creating a job. The DMG SHA-256 is
+`1b7d1ec3c60ec14b459a48fb48c91f47dfd2684e9a08e30dc1ca913a73c2533a`.
+The local build is ad-hoc signed only and is not notarized.
 
 ---
 
@@ -140,8 +143,10 @@ side states. Terminal = {DONE, FAILED, CANCELED}.
 - **Transcription remains `.mp3`-only, no conversion.** FFmpeg was deliberately removed from V1
   (pivot 2026-06-23). Duration is read with pure-Python `mutagen`. Video input +
   transcode is a roadmap item, to return behind the same `Processor`/media interface.
-- **Voice Isolation Phase 1 accepts WAV/MP3/MP4 as-is.** It preserves the native
-  API response and does no phase inversion, resampling, channel conversion, or M&E work.
+- **Voice Isolation accepts WAV/MP3/MP4 as-is as an experimental utility.** It
+  preserves the native API response and does no phase inversion, resampling,
+  channel conversion, or M&E work. Its output is not phase-coherent with the
+  source and must not be represented as a production DX stem.
 - **No OAuth exists for the ElevenLabs API** — API keys only. The key lives in the
   macOS Keychain (service `ElevenLabsHelper`, pinned to the secure backend);
   headless runs use `ELEVENLABS_API_KEY`. The key is never logged or printed.
@@ -166,7 +171,7 @@ side states. Terminal = {DONE, FAILED, CANCELED}.
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,gui]"
 
-# Tests (74; excludes the live-API test which needs a real key)
+# Tests (billable live API checks skip unless explicitly configured)
 .venv/bin/python -m pytest tests/ -q --ignore=tests/test_live_api.py
 
 # CLI (headless engine)
@@ -254,24 +259,22 @@ subscription credits or API dollars — it changes the optimization math.
 ## 9. Suggested next steps
 
 **Immediate / decisions:**
-1. **Enable `audio_isolation` on the release-test API key** and rerun the short
-   live Voice Isolation smoke test. Inspect the returned codec, sample rate, and
-   channel layout; the API contract does not guarantee them.
-2. **Sign and notarize the macOS artifact** before distributing it outside a
+1. **Sign and notarize the macOS artifact** before distributing it outside a
    controlled internal test.
-3. **Real-world validate the CSV**: upload a generated `.csv` + video via Dubbing
+2. **Real-world validate the CSV**: upload a generated `.csv` + video via Dubbing
    Studio → Manual Dub and confirm the project opens with correct clips/speakers.
    This is the one thing not covered by automated tests (strict-parser behavior).
-4. **Merge decision** for the feature line → `main` (owner's call).
-5. **Bump both the pyproject version and packaged app version** for the next release.
+3. **Merge decision** for the feature line → `main` (owner's call).
+4. **Bump both the pyproject version and packaged app version** for the next release.
 
 **Phase 2 (planned):** external EN→ES translation pass (Claude API or DeepL +
 project glossary) that fills the CSV `translation` column, QC'd in-app before upload.
 
 **Phase 3 (planned):** video input (FFmpeg module returns), optional local
 **Demucs** stem separation (the team sometimes has real stems; when they don't,
-produce a dialogue-only track + stereo bed), and possibly direct dubbing-API
-project creation (`POST /v1/dubbing` + polling) rather than manual upload.
+produce an explicitly approximate dialogue-suppressed stereo bed), and possibly
+direct dubbing-API project creation (`POST /v1/dubbing` + polling) rather than
+manual upload.
 
 **Standing V1.x items** (from ROADMAP): DPA/data-rights evidence before regulated
 use, deferred UX/eng minors, code-signing + notarization as a release gate.

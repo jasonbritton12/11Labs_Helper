@@ -1,14 +1,17 @@
 # ElevenLabs Helper
 
-Upload media to **ElevenLabs Speech-to-Text (Scribe)** or **Voice Isolation**,
-monitor a batch queue, and collect transcript or dialog-only deliverables. Ships as a
-lightweight macOS desktop app over a **reusable, headless engine** that also runs
-as a CLI/container for cloud supply-chain workflows (e.g. SDVI Rally).
+Upload audio to **ElevenLabs Speech-to-Text (Scribe)**, monitor a batch queue,
+and collect transcript deliverables. The app also retains **Voice Isolation** as
+a de-prioritized experimental utility. It ships as a lightweight macOS desktop
+app over a **reusable, headless engine** that also runs as a CLI/container for
+cloud supply-chain workflows (e.g. SDVI Rally).
 
 **Transcription scope:** supply a ready-to-upload **`.mp3`** (no conversion).
-**Voice Isolation Phase 1:** supply a **WAV, MP3, or MP4** and receive the native
-ElevenLabs dialog-only response as `<source>_DX.<format>`. M&E creation, phase
-inversion, alignment, and audio re-encoding are intentionally deferred.
+**Experimental Voice Isolation utility:** choose **Tools → Voice Isolation
+(Experimental)…**, supply a **WAV, MP3, or MP4**, and receive the native
+ElevenLabs response as `<source>_DX.<format>`. The result is an AI-isolated
+dialog reference, not a phase-coherent production DX stem. It is not suitable
+for creating M&E through phase inversion or subtraction.
 
 ## Architecture
 
@@ -33,10 +36,11 @@ same engine powers the CLI and the Docker image.
 
 - **No conversion (V1):** the audio file is uploaded as-is, **streamed from disk**
   (never loaded fully into memory).
-- **Dialog isolation:** select **Isolate dialog**, stage WAV/MP3/MP4 files, then
-  press **Run**. Each native Voice Isolation response is streamed to
+- **Experimental dialog isolation:** choose **Tools → Voice Isolation
+  (Experimental)…**, acknowledge the suitability warning, and stage WAV/MP3/MP4
+  files. Each native Voice Isolation response is streamed to
   `<source>_DX.<format>` and committed atomically so partial downloads are not
-  exposed as completed output.
+  exposed as completed output. It is uploaded only after the normal **Run** action.
 - **Feature-specific oversize gate:** before queueing, the file's size (via `stat`) and duration
   (via the pure-Python `mutagen` header reader) are checked against ElevenLabs'
   limits (transcription: 5 GB / ~10 h; Voice Isolation: 500 MB / 1 h). If either is exceeded you get a **warning that requires
@@ -190,11 +194,12 @@ security gate, for regulated use), and V2 capability work below.
 ### Out of scope for V1
 
 - **FFmpeg conversion module:** transcode/remux source media and support broader
-  formats for transcription and post-processing. Voice Isolation Phase 1 uploads
-  its supported WAV/MP3/MP4 inputs without conversion.
-- **Derived M&E:** align and gain-match the isolated dialog against the source,
-  invert it, and render a best-effort music-and-effects track at a controlled
-  professional audio format.
+  formats for transcription and post-processing. The experimental Voice
+  Isolation utility uploads its supported WAV/MP3/MP4 inputs without conversion.
+- **Phase-derived M&E — not planned:** user acceptance showed that the
+  AI-isolated dialog is not phase-coherent with the source, so subtraction does
+  not reliably recover music and effects. Use original stems or an official M&E;
+  approximate source separation/reconstruction would be a separate workflow.
 - **Segmentation + stitching** of files beyond the API limits (transcribe in
   chunks, re-merge with corrected timecodes).
 - **Higher-quality / lossless audio** options for dubbing-grade workflows.

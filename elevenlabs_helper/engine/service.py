@@ -39,7 +39,11 @@ def make_job(
             if job_type == JobType.TRANSCRIPTION
             else []
         ),
-        message=("Dialog isolation" if job_type == JobType.VOICE_ISOLATION else ""),
+        message=(
+            "Experimental AI dialog isolation"
+            if job_type == JobType.VOICE_ISOLATION
+            else ""
+        ),
     )
 
 

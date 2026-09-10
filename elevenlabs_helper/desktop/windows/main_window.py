@@ -7,8 +7,9 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -18,7 +19,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QComboBox,
     QTableWidget,
     QTableWidgetItem,
     QToolButton,
@@ -60,10 +60,22 @@ class MainWindow(QMainWindow):
         self._rows: dict[str, int] = {}  # job_id -> row index
         self._busy_since: dict[str, float] = {}  # job_id -> monotonic start of busy state
         self._busy_base: dict[str, str] = {}     # job_id -> base status label (without elapsed)
-        self._selected_job_type = JobType.TRANSCRIPTION
 
         self.setWindowTitle("ElevenLabs Helper")
         self.resize(860, 580)
+
+        # Voice Isolation remains available as a secondary utility. Keep it out
+        # of the primary transcription workflow so its AI-isolated output is not
+        # mistaken for a phase-coherent production DX stem.
+        tools_menu = self.menuBar().addMenu("Tools")
+        self.voice_isolation_action = QAction(
+            "Voice Isolation (Experimental)…", self
+        )
+        self.voice_isolation_action.setToolTip(
+            "Create an AI-isolated dialog reference from WAV, MP3, or MP4"
+        )
+        self.voice_isolation_action.triggered.connect(self._open_voice_isolation)
+        tools_menu.addAction(self.voice_isolation_action)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -92,12 +104,6 @@ class MainWindow(QMainWindow):
         )
         topbar.addWidget(settings_btn)
         topbar.addWidget(key_btn)
-        topbar.addWidget(QLabel("Workflow:"))
-        self.workflow_combo = QComboBox()
-        self.workflow_combo.addItem("Transcribe", JobType.TRANSCRIPTION.value)
-        self.workflow_combo.addItem("Isolate dialog", JobType.VOICE_ISOLATION.value)
-        self.workflow_combo.currentIndexChanged.connect(self._workflow_changed)
-        topbar.addWidget(self.workflow_combo)
         topbar.addStretch()
         topbar.addWidget(self.run_btn)
         topbar.addWidget(history_btn)
@@ -107,8 +113,8 @@ class MainWindow(QMainWindow):
         # Privacy disclosure (F1) + storage clarity (U7).
         # Use the theme's default text color (adapts to light/dark, meets contrast); 12px.
         disclosure = QLabel(
-            "Media you add is uploaded to ElevenLabs for the selected workflow; "
-            "results are saved to your output folder (shown below)."
+            "Audio you add is uploaded to ElevenLabs for transcription; "
+            "transcripts are saved to your output folder (shown below)."
         )
         disclosure.setStyleSheet("font-size: 12px;")
         disclosure.setWordWrap(True)
@@ -131,7 +137,14 @@ class MainWindow(QMainWindow):
         self.drop = DropArea()
         self.drop.filesDropped.connect(self._add_files)
         self.drop.filesRejected.connect(self._on_files_rejected)
-        self._configure_drop_area()
+        self.drop.configure(
+            suffixes=TRANSCRIPTION_SUFFIXES,
+            prompt=(
+                "Drop .mp3 files to stage — then press Run to transcribe\n"
+                "(export audio first — transcription remains MP3-only)"
+            ),
+            file_filter="Audio (*.mp3);;All files (*)",
+        )
         layout.addWidget(self.drop)
 
         # Table
@@ -178,34 +191,14 @@ class MainWindow(QMainWindow):
         self.key_banner.setVisible(not has_key)
         self.drop.setEnabled(has_key)
 
-    def _workflow_changed(self, _index: int) -> None:
-        self._selected_job_type = JobType(self.workflow_combo.currentData())
-        self._configure_drop_area()
-
-    def _configure_drop_area(self) -> None:
-        if self._selected_job_type == JobType.VOICE_ISOLATION:
-            self.drop.configure(
-                suffixes=VOICE_ISOLATION_SUFFIXES,
-                prompt=(
-                    "Drop WAV, MP3, or MP4 files to stage — then press Run\n"
-                    "ElevenLabs will return a dialog-only audio file"
-                ),
-                file_filter="Media (*.wav *.mp3 *.mp4);;All files (*)",
-            )
-        else:
-            self.drop.configure(
-                suffixes=TRANSCRIPTION_SUFFIXES,
-                prompt=(
-                    "Drop .mp3 files to stage — then press Run to transcribe\n"
-                    "(export audio first — transcription remains MP3-only)"
-                ),
-                file_filter="Audio (*.mp3);;All files (*)",
-            )
-
     # --- adding work ---------------------------------------------------------
-    def _add_files(self, paths: list[str]) -> None:
+    def _add_files(
+        self,
+        paths: list[str],
+        *,
+        job_type: JobType = JobType.TRANSCRIPTION,
+    ) -> None:
         added = 0
-        job_type = self._selected_job_type
         for path in paths:
             # Oversize gate (warn + acknowledge): size via stat, duration via mutagen.
             info = None
@@ -268,12 +261,7 @@ class MainWindow(QMainWindow):
 
     def _on_files_rejected(self, count: int) -> None:
         n = f"{count} file{'s' if count != 1 else ''}"
-        accepted = (
-            "WAV, MP3, or MP4"
-            if self._selected_job_type == JobType.VOICE_ISOLATION
-            else "MP3"
-        )
-        self.statusBar().showMessage(f"This workflow accepts {accepted}. Ignored {n}.", 8000)
+        self.statusBar().showMessage(f"Transcription accepts MP3 files. Ignored {n}.", 8000)
 
     # --- table rendering -----------------------------------------------------
     def _on_job_updated(self, job: Job) -> None:
@@ -307,7 +295,7 @@ class MainWindow(QMainWindow):
             status_text = friendly_error(job.error or job.message)
         elif job.status == JobStatus.DONE:
             if job.job_type == JobType.VOICE_ISOLATION:
-                status_text = "Dialog isolated"
+                status_text = "AI dialog reference created"
             else:
                 status_text = "Completed — no speech detected" if no_speech else "Completed"
         elif job.status in _BUSY_STATUSES:
@@ -512,6 +500,41 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("No output folder yet for this job.", 4000)
 
     # --- dialogs -------------------------------------------------------------
+    def _open_voice_isolation(self) -> None:
+        choice = QMessageBox.warning(
+            self,
+            "Voice Isolation (Experimental)",
+            "This utility creates an AI-isolated dialog reference. The result is "
+            "not phase-coherent with the source and is not suitable for creating "
+            "an M&E track through phase inversion or subtraction.\n\n"
+            "Selected files will be staged. Nothing is uploaded to ElevenLabs "
+            "until you press Run.",
+            QMessageBox.Ok | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if choice != QMessageBox.Ok:
+            return
+
+        paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select media for experimental Voice Isolation",
+            "",
+            "Media (*.wav *.mp3 *.mp4);;All files (*)",
+        )
+        accepted = [
+            path for path in paths
+            if Path(path).suffix.lower() in VOICE_ISOLATION_SUFFIXES
+        ]
+        rejected = len(paths) - len(accepted)
+        if accepted:
+            self._add_files(accepted, job_type=JobType.VOICE_ISOLATION)
+        if rejected:
+            n = f"{rejected} file{'s' if rejected != 1 else ''}"
+            self.statusBar().showMessage(
+                f"Voice Isolation accepts WAV, MP3, or MP4. Ignored {n}.",
+                8000,
+            )
+
     def _open_settings(self) -> None:
         if SettingsDialog(self.engine.settings, self).exec():
             self._update_output_location()

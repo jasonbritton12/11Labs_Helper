@@ -159,7 +159,7 @@ def test_processor_saves_dialog_artifact(tmp_path, dummy_mp4, mock_elevenlabs):
     VoiceIsolationProcessor().run(job, ctx)
 
     assert job.status == JobStatus.DONE
-    assert job.message == "Dialog isolated"
+    assert job.message == "AI dialog reference created"
     assert job.deliverables == []
     assert Path(job.artifacts["dialog"]).read_bytes() == mock_elevenlabs.isolation_result
 
