@@ -1,9 +1,12 @@
 # C4 implementation plan index
 
-Prepared 2026-09-28. These are implementation packets, not delivered C4
-features. The current branch exports rulebook-authored SRT/WebVTT only. It does
-not yet perform exact frame conversion, shot-aware timing, named destination
-validation, TTML/IMSC serialization, or native CTA-608/CTA-708 encoding.
+Prepared 2026-09-28; implementation status updated 2026-09-29. F1 now provides
+an isolated exact rational frame-projection core, verified in
+[C4 F1 verification](C4_F1_VERIFICATION.md). It is not connected to caption QC,
+sidecars, or exporters. The current branch still exports rulebook-authored
+SRT/WebVTT only and does not claim frame-accurate delivery, shot-aware timing,
+named destination validation, TTML/IMSC serialization, or native
+CTA-608/CTA-708 encoding.
 
 ## Governing boundaries
 
@@ -28,7 +31,7 @@ validation, TTML/IMSC serialization, or native CTA-608/CTA-708 encoding.
 
 | Order | Packet | Purpose | Entry gate | Current state |
 |---:|---|---|---|---|
-| 1 | [Exact frame alignment and conversion](C4_FRAME_ALIGNMENT_PLAN.md) | Introduce rational grids, boundary policies, conversion evidence, and source incompatibility reporting. | Owner-selected grids and endpoint policy; licensed SMPTE text before drop-frame labels. | Plan ready; no implementation. |
+| 1 | [Exact frame alignment and conversion](C4_FRAME_ALIGNMENT_PLAN.md) | Introduce rational grids, boundary policies, conversion evidence, and source incompatibility reporting. | Owner-selected grids and endpoint policy; licensed SMPTE text before drop-frame labels. | F1 exact core verified; F2 QC/export integration and F3 destination acceptance remain unimplemented. |
 | 2 | [Shot context and hang checks](C4_SHOT_CONTEXT_PLAN.md) | Accept provenance-bearing shot observations and evaluate hangs without inventing cuts. | Approved observation sources, tolerances, coverage, and policy thresholds. | Plan ready; no implementation. |
 | 3 | [Named destination overrides](C4_DESTINATION_OVERRIDES_PLAN.md) | Resolve immutable, evidence-backed destination contracts and artifact manifests. | First destination/receiver and evidence-retention owner decisions. | Plan ready; no implementation. |
 | 4 | [Generic TTML2 exporter](C4_TTML2_EXPORTER_PLAN.md) | Serialize a minimal generic TTML2 sidecar and prove semantic/XML interoperability. | C1-C3/P13, time-precision decision, independent validator, named converter/player. | Plan ready; no implementation. |

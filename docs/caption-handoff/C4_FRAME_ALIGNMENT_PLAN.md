@@ -1,6 +1,9 @@
 # C4 frame alignment plan
 
-Prepared and sources retrieved **2026-09-28**. This is a build plan, not a claim that current SRT/WebVTT output is frame accurate or that a native CEA, TTML, or IMSC exporter exists.
+Prepared and sources retrieved **2026-09-28**. F1 implementation verified
+**2026-09-29**; see [C4 F1 verification](C4_F1_VERIFICATION.md). The exact core
+is not wired to QC or exports, so current SRT/WebVTT output is not claimed to be
+frame accurate and no native CEA, TTML, or IMSC exporter exists.
 
 ## Goal, scope, and standards evidence
 

@@ -76,9 +76,10 @@ be represented as recovered production stems.
 
 Implementation packets and acceptance gates:
 [Caption Implementation Handoff](docs/CAPTION_IMPLEMENTATION_HANDOFF.md).
-Packets P00–P11 and the renewed independent P13 review pass on the uncommitted
-`codex/caption-rulebook` worktree. C4 destination encoding/context remains
-plan-only. See the
+Packets P00–P11 and the renewed independent P13 review pass at commit `84dd7c0`
+on `codex/caption-rulebook`. The C4 F1 exact rational frame-projection core is
+implemented and independently reviewed, but it is not connected to caption QC
+or exports; C4 delivery remains unsupported. See the
 [C3 release verification record](docs/caption-handoff/C3_RELEASE_VERIFICATION.md).
 
 Use the house standard in
@@ -114,9 +115,10 @@ The implementation is split into four checkpoints:
 3. **C3 — editorial review (verified on feature branch):** preview plus manual
    split/merge/line-break, speaker-notation, and SFX controls; source-bound
    caption overlays; and separately stored, issue-scoped local approvals.
-4. **C4 — delivery context (planned, unimplemented):** frame/shot-aware timing and verified 608, 708,
-   WebVTT, SRT, IMSC, and TTML profiles as exporters land, all without emitted
-   caption styling or positioning.
+4. **C4 — delivery context (foundation in progress):** F1 exact rational frame
+   projection is implemented as an isolated core. F2 QC/export integration,
+   shot context, destination overrides, and verified 608, 708, WebVTT, SRT,
+   IMSC, and TTML profiles remain unimplemented.
 
 The canonical transcription and speaker edits remain immutable. The Dubbing CSV
 continues to bypass caption interpretation and preserve waveform-aligned timing.

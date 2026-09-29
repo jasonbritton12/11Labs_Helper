@@ -9,9 +9,12 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, ClassVar, Mapping
+from math import gcd
+from typing import Any, ClassVar, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
@@ -33,7 +36,17 @@ class _CaptionModel(BaseModel):
         if not isinstance(value, Mapping):
             return value
         data = dict(value)
-        for field_name in ("profile_hash", "source_hash", "context_hash", "document_hash", "report_hash", "severity_counts", "measurement_hash"):
+        for field_name in (
+            "profile_hash",
+            "source_hash",
+            "context_hash",
+            "document_hash",
+            "report_hash",
+            "severity_counts",
+            "measurement_hash",
+            "grid_hash",
+            "projection_id",
+        ):
             # These are computed from the remaining serialized contract.  They
             # must never be trusted from a sidecar supplied by a later process.
             if field_name in cls.model_computed_fields:
@@ -44,6 +57,11 @@ class _CaptionModel(BaseModel):
 class CaptionTimingMode(str, Enum):
     HOUSE = "house"
     SOURCE = "source"
+
+
+class CaptionFrameAlignment(str, Enum):
+    FLOOR_START_CEIL_END = "floor_start_ceil_end"
+    NONE = "none"
 
 
 class CaptionExportPolicy(str, Enum):
@@ -358,9 +376,177 @@ class CaptionSource(_CaptionModel):
         return deterministic_hash(self.model_dump(exclude={"source_hash", "speaker_overlay_hash"}))
 
 
+MAX_DECIMAL_LEXEME_LENGTH = 256
+MAX_DECIMAL_EXPONENT_ABS = 10_000
+MAX_RATIONAL_COMPONENT_BITS = 16_384
+_DECIMAL_LEXEME = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$")
+
+
+def _reduced_pair(numerator: int, denominator: int) -> tuple[int, int]:
+    if denominator <= 0:
+        raise ValueError("denominator must be positive")
+    if any(abs(component).bit_length() > MAX_RATIONAL_COMPONENT_BITS for component in (numerator, denominator)):
+        raise ValueError("rational component exceeds the exact-time size limit")
+    common = gcd(numerator, denominator)
+    reduced = numerator // common, denominator // common
+    if any(abs(component).bit_length() > MAX_RATIONAL_COMPONENT_BITS for component in reduced):
+        raise ValueError("rational component exceeds the exact-time size limit")
+    return reduced
+
+
+def _rational_identity(value: "RationalTime | CaptionFrameRate") -> dict[str, str]:
+    """Canonical exact identity; JSON numbers never become float material."""
+
+    return {"numerator": str(value.numerator), "denominator": str(value.denominator)}
+
+
+class RationalTime(_CaptionModel):
+    """An exact reduced media time in seconds."""
+
+    numerator: int
+    denominator: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _reduce(self) -> "RationalTime":
+        numerator, denominator = _reduced_pair(self.numerator, self.denominator)
+        object.__setattr__(self, "numerator", numerator)
+        object.__setattr__(self, "denominator", denominator)
+        return self
+
+    @classmethod
+    def from_decimal(cls, lexeme: str) -> "RationalTime":
+        """Parse a finite decimal lexeme without passing through binary float."""
+
+        if not isinstance(lexeme, str) or not lexeme or lexeme != lexeme.strip():
+            raise ValueError("decimal time must be a non-empty, unpadded string")
+        if len(lexeme) > MAX_DECIMAL_LEXEME_LENGTH or _DECIMAL_LEXEME.fullmatch(lexeme) is None:
+            raise ValueError("malformed or unbounded decimal time")
+        try:
+            value = Decimal(lexeme)
+            if (
+                not value.is_finite()
+                or abs(value.adjusted()) > MAX_DECIMAL_EXPONENT_ABS
+                or abs(value.as_tuple().exponent) > MAX_DECIMAL_EXPONENT_ABS
+            ):
+                raise ValueError("decimal time must be finite and bounded")
+            numerator, denominator = value.as_integer_ratio()
+        except (InvalidOperation, OverflowError, ValueError) as exc:
+            raise ValueError("malformed or unbounded decimal time") from exc
+        return cls(numerator=numerator, denominator=denominator)
+
+
 class CaptionFrameRate(_CaptionModel):
     numerator: int = Field(gt=0)
     denominator: int = Field(gt=0)
+
+
+class FrameGrid(_CaptionModel):
+    frame_rate: CaptionFrameRate
+    origin_media_time: RationalTime = Field(default_factory=lambda: RationalTime(numerator=0, denominator=1))
+    alignment: CaptionFrameAlignment
+
+    @model_validator(mode="after")
+    def _normalize_grid_rate(self) -> "FrameGrid":
+        numerator, denominator = _reduced_pair(self.frame_rate.numerator, self.frame_rate.denominator)
+        if (numerator, denominator) != (self.frame_rate.numerator, self.frame_rate.denominator):
+            object.__setattr__(
+                self,
+                "frame_rate",
+                CaptionFrameRate(numerator=numerator, denominator=denominator),
+            )
+        return self
+
+    @computed_field(return_type=str)
+    @property
+    def grid_hash(self) -> str:
+        return deterministic_hash(
+            {
+                "frame_rate": _rational_identity(self.frame_rate),
+                "origin_media_time": _rational_identity(self.origin_media_time),
+                "alignment": self.alignment.value,
+            }
+        )
+
+
+class TimecodeLabelContext(_CaptionModel):
+    """Data-only timecode request; C4 F1 deliberately supplies no label algorithm."""
+
+    nominal_fps: int = Field(gt=0)
+    drop_frame: bool
+    mapping_id: str | None = None
+    mapping_verified: bool = False
+
+    @model_validator(mode="after")
+    def _drop_frame_is_unverified(self) -> "TimecodeLabelContext":
+        if self.mapping_verified:
+            raise ValueError("timecode-label mappings remain unverified in C4 F1")
+        return self
+
+
+class TimecodeLabel(_CaptionModel):
+    """A validated label value only; conversion/generation remains unsupported."""
+
+    hours: int = Field(ge=0)
+    minutes: int = Field(ge=0, lt=60)
+    seconds: int = Field(ge=0, lt=60)
+    frame: int = Field(ge=0)
+    nominal_fps: int = Field(gt=0)
+    drop_frame: bool
+
+    @model_validator(mode="after")
+    def _frame_within_nominal_rate(self) -> "TimecodeLabel":
+        if self.frame >= self.nominal_fps:
+            raise ValueError("timecode frame must be less than nominal_fps")
+        return self
+
+
+class FrameProjection(_CaptionModel):
+    event_id: str
+    start_frame: int
+    end_frame_exclusive: int
+    original_start: RationalTime
+    original_end: RationalTime
+    projected_start: RationalTime
+    projected_end: RationalTime
+    grid_hash: str
+    policy_id: str
+    policy_version: str
+    document_hash: str
+    profile_hash: str
+
+    @model_validator(mode="after")
+    def _valid_projection(self) -> "FrameProjection":
+        for field_name in ("event_id", "grid_hash", "policy_id", "policy_version", "document_hash", "profile_hash"):
+            if not getattr(self, field_name).strip():
+                raise ValueError(f"{field_name} must not be blank")
+        if (
+            self.original_end.numerator * self.original_start.denominator
+            <= self.original_start.numerator * self.original_end.denominator
+        ):
+            raise ValueError("original frame interval must be non-empty")
+        if self.end_frame_exclusive <= self.start_frame:
+            raise ValueError("projected frame interval must be non-empty")
+        if (
+            self.projected_end.numerator * self.projected_start.denominator
+            <= self.projected_start.numerator * self.projected_end.denominator
+        ):
+            raise ValueError("projected media interval must be non-empty")
+        return self
+
+    @computed_field(return_type=str)
+    @property
+    def projection_id(self) -> str:
+        identity = {
+            "event_id": self.event_id,
+            "original_start": _rational_identity(self.original_start),
+            "original_end": _rational_identity(self.original_end),
+            "grid_hash": self.grid_hash,
+            "policy_id": self.policy_id,
+            "policy_version": self.policy_version,
+            "document_hash": self.document_hash,
+            "profile_hash": self.profile_hash,
+        }
+        return deterministic_id("caption_frame_projection", identity)
 
 
 class CaptionContext(_CaptionModel):
@@ -391,6 +577,23 @@ class CaptionContext(_CaptionModel):
     @property
     def context_hash(self) -> str:
         return deterministic_hash(self.model_dump(exclude={"context_hash"}))
+
+
+class CaptionContextV2(CaptionContext):
+    """Exact frame context stored beside, rather than inside, the v1 contract."""
+
+    schema_version: Literal["2"] = "2"
+    media_time_origin: RationalTime
+    frame_grid: FrameGrid
+    timecode_label_context: TimecodeLabelContext | None = None
+
+    @model_validator(mode="after")
+    def _consistent_exact_grid(self) -> "CaptionContextV2":
+        if self.media_time_origin != self.frame_grid.origin_media_time:
+            raise ValueError("media_time_origin must equal the frame-grid origin")
+        if self.frame_rate is not None and self.frame_rate != self.frame_grid.frame_rate:
+            raise ValueError("legacy frame_rate must exactly equal the frame-grid rate")
+        return self
 
 
 class CaptionCharacterRange(_CaptionModel):
@@ -447,6 +650,50 @@ class CaptionEvent(_CaptionModel):
         return self
 
 
+class CaptionEventV2(CaptionEvent):
+    """A v2 event with required exact endpoints and v1 compatibility floats."""
+
+    schema_version: Literal["2"] = "2"
+    start_time: RationalTime
+    end_time: RationalTime
+
+    @model_validator(mode="before")
+    @classmethod
+    def _link_default_id_to_v1_event(cls, value: Any) -> Any:
+        """Use the stable v1 semantic identity for a beside-v1 enrichment."""
+
+        if not isinstance(value, Mapping):
+            return value
+        data = dict(value)
+        if data.get("event_id"):
+            return data
+        v1_payload = {
+            field_name: data[field_name]
+            for field_name in CaptionEvent.model_fields
+            if field_name != "event_id" and field_name in data
+        }
+        data["event_id"] = CaptionEvent.model_validate(v1_payload).event_id
+        return data
+
+    @model_validator(mode="after")
+    def _valid_exact_interval(self) -> "CaptionEventV2":
+        if self.start_time.numerator < 0:
+            raise ValueError("exact caption start_time must be non-negative")
+        if (
+            self.end_time.numerator * self.start_time.denominator
+            <= self.start_time.numerator * self.end_time.denominator
+        ):
+            raise ValueError("exact caption event requires start_time < end_time")
+        try:
+            compatible_start = self.start_time.numerator / self.start_time.denominator
+            compatible_end = self.end_time.numerator / self.end_time.denominator
+        except OverflowError as exc:
+            raise ValueError("exact caption time is outside the compatibility-float range") from exc
+        if self.start != compatible_start or self.end != compatible_end:
+            raise ValueError("legacy float endpoints contradict exact caption times")
+        return self
+
+
 class CaptionDocument(_CaptionModel):
     schema_version: str = CAPTION_SCHEMA_VERSION
     algorithm_version: str = CAPTION_ALGORITHM_VERSION
@@ -477,6 +724,10 @@ class CaptionDocument(_CaptionModel):
 
     @model_validator(mode="after")
     def _ordered_unique_events(self) -> "CaptionDocument":
+        if any(type(event) is not CaptionEvent for event in self.events):
+            raise ValueError(
+                "exact v2 events must be supplied beside the v1 caption document"
+            )
         ids = [event.event_id for event in self.events]
         if len(ids) != len(set(ids)):
             raise ValueError("caption event IDs must be unique")

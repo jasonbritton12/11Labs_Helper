@@ -27,11 +27,11 @@ English→Spanish dubbing — plus the experimental dialog-isolation utility.
 
 | | |
 |---|---|
-| **Current branch** | `codex/caption-rulebook` (uncommitted implementation based on `main` at `ec777c7`) |
+| **Current branch** | `codex/caption-rulebook`; C1–C3 committed/pushed at `84dd7c0`, with C4 F1 exact-core work following |
 | **Feature ancestry** | Includes `dubbing-workflow` at `2bd5cff` and the Voice Isolation commits |
 | **Feature status** | Voice Isolation retained as an experimental Tools-menu utility |
-| **Tests** | 256 non-live tests pass; wheel install and frozen-app launch smoke pass |
-| **Caption status** | P00–P11 and renewed independent P13 review pass on the uncommitted branch. C4 delivery profiles remain plan-only |
+| **Tests** | 286 non-live tests pass; wheel install and frozen-app launch smoke pass |
+| **Caption status** | P00–P11/P13 pass at `84dd7c0`. C4 F1 exact rational projection core passes fresh review; F2 integration and delivery profiles remain unimplemented |
 
 Caption implementation contract and remaining entry point:
 [Caption Implementation Handoff](CAPTION_IMPLEMENTATION_HANDOFF.md). It defines

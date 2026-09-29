@@ -1,11 +1,13 @@
 # Caption rulebook implementation handoff
 
 Prepared 2026-09-18. Implementation update 2026-09-29: packets P00–P11 and the
-renewed independent P13 review pass on the uncommitted
-`codex/caption-rulebook` worktree. P12's separate C4 plans are complete; their
-product behavior remains unimplemented. Evidence is recorded in
-[caption-handoff/C3_RELEASE_VERIFICATION.md](caption-handoff/C3_RELEASE_VERIFICATION.md),
-with the C4 plan set indexed in
+renewed independent P13 review pass at `84dd7c0` on
+`codex/caption-rulebook`. P12's separate C4 plans are complete, and F1's isolated
+exact rational frame-projection core is implemented and reviewed. F2 QC/export
+integration and all destination behavior remain unimplemented. Evidence is
+recorded in
+[caption-handoff/C3_RELEASE_VERIFICATION.md](caption-handoff/C3_RELEASE_VERIFICATION.md)
+and [C4 F1 verification](caption-handoff/C4_F1_VERIFICATION.md), with the plan set indexed in
 [caption-handoff/C4_PLAN_INDEX.md](caption-handoff/C4_PLAN_INDEX.md).
 
 ## 1. Goal and starting point

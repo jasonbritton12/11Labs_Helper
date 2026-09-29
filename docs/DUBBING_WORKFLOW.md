@@ -1,8 +1,10 @@
 # Dubbing Workflow Optimization (EN → ES via ElevenLabs Dubbing Studio)
 
 *Status updated 2026-09-29: Phase 1 is included in `main` at `ec777c7`.
-Caption P00–P11 and the renewed independent P13 review pass on the uncommitted
-`codex/caption-rulebook` worktree; C4 delivery profiles remain plan-only. See the
+Caption P00–P11 and the renewed independent P13 review pass at `84dd7c0` on
+`codex/caption-rulebook`. C4 F1 exact rational frame projection is implemented
+as an isolated core; QC/export integration and delivery profiles remain
+unimplemented. See the
 [implementation handoff](CAPTION_IMPLEMENTATION_HANDOFF.md) and
 [C3 release verification record](caption-handoff/C3_RELEASE_VERIFICATION.md).*
 *Facts below verified against ElevenLabs docs/help center July 2026; re-verify pricing before relying on it.*

@@ -1,8 +1,9 @@
 # Caption Interpretation Layer Plan
 
 *Status: packets P00–P11 for C1–C3 and the renewed independent P13 review pass
-on the uncommitted `codex/caption-rulebook` worktree as of 2026-09-29. All C4
-delivery profiles and frame/shot context remain plan-only. See the
+at `84dd7c0` on `codex/caption-rulebook` as of 2026-09-29. C4 F1 exact rational
+frame projection is implemented as an isolated core; its QC/export integration,
+all delivery profiles, and shot context remain unimplemented. See the
 [C3 release verification record](caption-handoff/C3_RELEASE_VERIFICATION.md). The
 executable build packets and acceptance gates are in
 [Caption Implementation Handoff](CAPTION_IMPLEMENTATION_HANDOFF.md). That
