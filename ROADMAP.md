@@ -1,7 +1,7 @@
 # Roadmap
 
 Tracks work intentionally deferred out of V1. V1 (single-`.mp3` → ElevenLabs
-Scribe → SRT/VTT/DOCX) is built, and the current feature branch passes 96 tests
+Scribe → SRT/VTT/DOCX) is built, and the current feature branch passes 256 tests
 with two billable live checks skipped by default. Items below are grouped by
 milestone.
 
@@ -72,33 +72,49 @@ approximate workflow could evaluate dedicated source separation plus manual
 reconstruction and listening QC, but that is a different capability and must not
 be represented as recovered production stems.
 
-### Universal caption interpretation layer — PLANNED
+### Universal caption interpretation layer — C1–C3 VERIFIED ON FEATURE BRANCH
+
+Implementation packets and acceptance gates:
+[Caption Implementation Handoff](docs/CAPTION_IMPLEMENTATION_HANDOFF.md).
+Packets P00–P11 and the renewed independent P13 review pass on the uncommitted
+`codex/caption-rulebook` worktree. C4 destination encoding/context remains
+plan-only. See the
+[C3 release verification record](docs/caption-handoff/C3_RELEASE_VERIFICATION.md).
 
 Use the house standard in
 [Universal Caption Authoring Rule — 608 / 708 / Web](docs/universal-caption-authoring-rule_608-708-web.md)
 as the default policy for prerecorded English readable-caption outputs. The
-current `readability.retime()` behavior is a Phase-1 timing baseline, not the
-finished authoring system.
+legacy `readability.retime()` function remains only as a compatibility baseline;
+new SRT/VTT export paths use the caption interpretation layer.
 
-Add an engine-level interpretation layer between the edited canonical transcript
-and the SRT/VTT renderers. It will create one versioned semantic caption document
+The engine-level interpretation layer now sits between the edited canonical
+transcript and the SRT/VTT renderers. It creates one versioned semantic caption document
 with explicit line breaks, resolved timing, source traceability, and structured
 QC. Delivery renderers will consume that document rather than independently
 reflowing text. Destination-specific profiles may override the house defaults.
 Caption positioning and styling are out of scope: outputs must not emit placement,
 alignment, font, color, size, or other presentation directives.
 
+Settings now includes **Keep ElevenLabs timing (SRT/VTT)**, with a saved source/house
+mode and explicit per-job/re-export overrides. Source mode preserves existing
+cue boundaries derived from ElevenLabs word timestamps and reports violations;
+house mode authors captions under the governing rulebook. Other readability
+guides work within those parameters. Fresh installs use house mode; legacy
+choices migrate without silent timing changes.
+
 The implementation is split into four checkpoints:
 
-1. **C1 — foundation:** versioned profiles, destination overrides, interpreted
+1. **C1 — foundation (implemented on feature branch):** versioned profile contracts, interpreted
    caption/QC models, and backward-compatible mapping from
-   `readable_subtitles=True` to the house profile.
-2. **C2 — deterministic rules:** 32 characters × 2 lines, natural line breaks,
+   `readable_subtitles` to source/house modes, plus saved Settings controls and
+   job option snapshots.
+2. **C2 — deterministic rules (verified on feature branch):** 32 characters × 2 lines, natural line breaks,
    17/20 CPS target-warning-failure bands, 1–7 second durations, no overlap,
    speaker-change handling, glyph validation, and machine-readable QC.
-3. **C3 — editorial review:** preview/QC UI, source-linked findings, manual
-   split/merge/line-break controls, and separately persisted exception approvals.
-4. **C4 — delivery context:** frame/shot-aware timing and verified 608, 708,
+3. **C3 — editorial review (verified on feature branch):** preview plus manual
+   split/merge/line-break, speaker-notation, and SFX controls; source-bound
+   caption overlays; and separately stored, issue-scoped local approvals.
+4. **C4 — delivery context (planned, unimplemented):** frame/shot-aware timing and verified 608, 708,
    WebVTT, SRT, IMSC, and TTML profiles as exporters land, all without emitted
    caption styling or positioning.
 
@@ -177,9 +193,9 @@ The original "throw any file at it" vision, plus more ElevenLabs features.
   phased plan in [docs/DUBBING_WORKFLOW.md](docs/DUBBING_WORKFLOW.md); Phase 1
   (speaker QC + Manual-Dub CSV + readable-subtitle re-timing) shipped on the
   `dubbing-workflow` branch.
-- **Caption interpretation:** replace timing-only readable subtitles with the
-  rulebook-driven, profile-based authoring layer described above. Maintain one
-  semantic caption master for all delivery renderers.
+- **Caption interpretation C4:** implement the reviewed frame/shot context and
+  destination-specific exporter plans on top of the C1–C3 semantic caption
+  master and editorial workflow.
 - **More exports:** optional TXT / JSON / HTML / PDF as user-facing downloads
   (raw JSON is already retained internally).
 - **Async/webhook transcription** for very long jobs (needs a callback endpoint;

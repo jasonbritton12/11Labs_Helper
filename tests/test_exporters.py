@@ -66,7 +66,9 @@ def test_writer_emits_only_selected(tmp_path):
     assert (tmp_path / "clip.vtt").exists()
     assert not (tmp_path / "clip.docx").exists()
     assert not (tmp_path / "clip.json").exists()   # JSON only when explicitly selected
-    assert set(artifacts) == {"srt", "vtt"}
+    assert set(artifacts) == {"srt", "vtt", "caption_document", "caption_qc"}
+    assert artifacts["caption_document"].exists()
+    assert artifacts["caption_qc"].exists()
 
 
 def test_writer_json_copy_when_selected(tmp_path):

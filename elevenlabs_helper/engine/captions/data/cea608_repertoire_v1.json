@@ -1,0 +1,95 @@
+{
+  "schema_id": "elevenlabs-helper.caption.cea608-repertoire",
+  "schema_version": "1.0.0",
+  "repertoire_id": "cea608-libcaption-v0.8-e8b6261090eb3f2012427cc6b151c923f82453db",
+  "data_version": "1.0.0",
+  "status": "verified_repertoire_lookup_only",
+  "description": "Pinned Unicode repertoire transcribed from libcaption v0.8's published CEA-608 character-set table. This is a deterministic Unicode membership dataset, not a CEA-608 byte encoder or a claim of end-to-end delivery compliance.",
+  "sources": [
+    {
+      "role": "converter_repertoire",
+      "publisher": "Twitch Interactive, Inc.",
+      "artifact": "szatmary/libcaption README.md, Characters",
+      "version": "v0.8",
+      "commit": "e8b6261090eb3f2012427cc6b151c923f82453db",
+      "url": "https://github.com/szatmary/libcaption/blob/e8b6261090eb3f2012427cc6b151c923f82453db/README.md#characters",
+      "license_spdx": "MIT",
+      "license_url": "https://github.com/szatmary/libcaption/blob/e8b6261090eb3f2012427cc6b151c923f82453db/LICENSE.txt",
+      "redistribution_status": "redistributable_with_MIT_notice",
+      "source_scope": "Published Basic North American, Special North American, and Extended Western European character repertoires implemented by this converter."
+    },
+    {
+      "role": "normative_specification_reference",
+      "publisher": "Consumer Electronics Association",
+      "artifact": "ANSI/CEA-608-E-2008 (R2014), preview",
+      "version": "CEA-608-E-2008 (R2014)",
+      "url": "https://webstore.ansi.org/preview-pages/CEA/preview_ANSI%2BCEA%2B608-E-2008%2BR2014.pdf",
+      "license_status": "copyrighted_all_rights_reserved_preview",
+      "redistribution_status": "not_copied_into_this_dataset",
+      "source_scope": "Normative reference only; its character tables are not reproduced here."
+    }
+  ],
+  "redistribution": {
+    "derived_data_license": "MIT",
+    "required_notice": "Copyright 2016-2017 Twitch Interactive, Inc. or its affiliates. Licensed under the MIT License; retain the copyright and permission notice when redistributing this derived repertoire data.",
+    "notice_source_url": "https://github.com/szatmary/libcaption/blob/e8b6261090eb3f2012427cc6b151c923f82453db/LICENSE.txt",
+    "modification_notice": "This JSON reformats the published repertoire as Unicode scalar records. It does not copy the ANSI/CEA standard tables and does not include converter code."
+  },
+  "record_contract": {
+    "ordering": "character_sets is source-table order; glyphs is source-table order within each set.",
+    "glyph_encoding": "Each glyph is one Unicode scalar value encoded as a JSON string; U+00A0 is represented as \\u00a0.",
+    "membership_rule": "A glyph is mechanically supported only when its exact Unicode scalar is present in at least one character-set glyphs array. No normalization, substitution, transliteration, replacement, or dropping is permitted by this lookup."
+  },
+  "character_sets": [
+    {
+      "id": "BNA",
+      "name": "Basic North American",
+      "glyphs": [
+        " ", "!", "\"", "#", "$", "%", "&", "’", "(", ")", "á", "+", ",", "-", ".", "/",
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?",
+        "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O",
+        "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "é", "]", "í", "ó",
+        "ú", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o",
+        "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "ç", "÷", "Ñ", "ñ", "█"
+      ]
+    },
+    {
+      "id": "SNA",
+      "name": "Special North American",
+      "glyphs": ["®", "°", "½", "¿", "™", "¢", "£", "♪", "à", "\u00a0", "è", "â", "ê", "î", "ô", "û"]
+    },
+    {
+      "id": "WES",
+      "name": "Extended Western European: Spanish/Miscellaneous",
+      "glyphs": ["Á", "É", "Ó", "Ú", "Ü", "ü", "‘", "¡", "*", "'", "—", "©", "℠", "•", "“", "”"]
+    },
+    {
+      "id": "WEF",
+      "name": "Extended Western European: French",
+      "glyphs": ["À", "Â", "Ç", "È", "Ê", "Ë", "ë", "Î", "Ï", "ï", "Ô", "Ù", "ù", "Û", "«", "»"]
+    },
+    {
+      "id": "WEP",
+      "name": "Extended Western European: Portuguese",
+      "glyphs": ["Ã", "ã", "Í", "Ì", "ì", "Ò", "ò", "Õ", "õ", "{", "}", "\\", "^", "_", "|", "~"]
+    },
+    {
+      "id": "WEG",
+      "name": "Extended Western European: German/Danish",
+      "glyphs": ["Ä", "ä", "Ö", "ö", "ß", "¥", "¤", "¦", "Å", "å", "Ø", "ø", "┌", "┐", "└", "┘"]
+    }
+  ],
+  "verification_boundaries": {
+    "mechanical_unicode_repertoire_lookup": "verified_for_pinned_libcaption_v0_8",
+    "unicode_to_cea608_byte_mapping": "not_encoded_by_this_dataset",
+    "actual_cea608_byte_generation": "unverified",
+    "control_code_overhead": "unverified",
+    "channel_and_field_behavior": "unverified",
+    "downstream_transcoding_and_player_acceptance": "unverified",
+    "claim_gate": "Do not claim CEA-608-compatible authoring or delivery from this data alone. P05 may report exact glyph membership only; C4 requires encoder, transport, and acceptance evidence."
+  },
+  "not_listed_glyph_disposition": {
+    "status": "unverified_not_supported_by_pinned_repertoire",
+    "required_behavior": "Retain the original glyph in draft output and report its code point and source position. Do not replace, transliterate, omit, or assert that the normative CEA-608 standard rejects it without separately verified evidence."
+  }
+}

@@ -1,6 +1,10 @@
 # Dubbing Workflow Optimization (EN → ES via ElevenLabs Dubbing Studio)
 
-*Status: Phase 1 implemented on the `dubbing-workflow` branch — July 2026.*
+*Status updated 2026-09-29: Phase 1 is included in `main` at `ec777c7`.
+Caption P00–P11 and the renewed independent P13 review pass on the uncommitted
+`codex/caption-rulebook` worktree; C4 delivery profiles remain plan-only. See the
+[implementation handoff](CAPTION_IMPLEMENTATION_HANDOFF.md) and
+[C3 release verification record](caption-handoff/C3_RELEASE_VERIFICATION.md).*
 *Facts below verified against ElevenLabs docs/help center July 2026; re-verify pricing before relying on it.*
 
 ## Current workflow and its costs
@@ -44,17 +48,21 @@ Edits are stored as an overlay next to the app's history JSON, so re-exports are
 free and repeatable.
 
 ### 3. Can dialogue (waveform) timing and subtitle (readable) timing be separated?
-**Yes — now implemented.** The Dubbing CSV always keeps waveform-aligned timing
-(dubbing needs it). SRT/VTT can optionally be re-timed for readability — min
-1s display, ≤17 chars/sec reading speed, tiny same-speaker fragments merged,
-~2-frame gaps preserved — via the "Readable subtitle timing" checkbox in
-Re-export (default configurable via `readable_subtitles` in settings.json).
-This is the timing-only Phase-1 baseline. The planned
-[caption interpretation layer](CAPTION_INTERPRETATION_LAYER.md) will apply the
+**Yes — implemented on the caption feature branch.** The Dubbing CSV always keeps
+waveform-aligned timing. SRT/VTT use the
+[caption interpretation layer](CAPTION_INTERPRETATION_LAYER.md), which applies the
 [universal 608/708/Web house rule](universal-caption-authoring-rule_608-708-web.md)
 to segmentation, authored line breaks, timing, speaker treatment, glyph checks,
 destination overrides, and structured QC. The Dubbing CSV remains outside that
 layer and keeps exact waveform timing.
+
+The 608/708/Web house rulebook is the governing
+policy, with readability guidance operating within its limits. It also specifies
+a saved **Keep ElevenLabs timing (SRT/VTT)** option in Settings. Source mode
+preserves the app's current cue boundaries derived from word
+timestamps and reports conflicts; house mode authors lines and timing under the
+rulebook. Both modes emit shared SRT/VTT document and QC sidecars. Actual 608/708
+encoding and destination verification remain C4 work.
 
 ### 4. Is an external EN→ES translation step worth it? Does supplying Spanish save credits?
 **No credit savings — dubbing bills per minute whether or not ElevenLabs
@@ -96,8 +104,10 @@ as "create the Studio project from the app" rather than replacing the Studio.
 
 | Phase | What | Status |
 |---|---|---|
-| 1 | Speaker QC dialog, Manual-Dub CSV export, readable-subtitle re-timing | **Done (this branch)** |
-| C1–C4 | Universal caption interpretation layer and editorial QC workflow | Planned — see [caption plan](CAPTION_INTERPRETATION_LAYER.md) |
+| 1 | Speaker QC dialog, Manual-Dub CSV export, readable-subtitle re-timing | **Done; included in main** |
+| C1–C2 | Caption models, source/house timing, deterministic rules, SRT/VTT document + QC sidecars | **Verified on uncommitted feature branch** |
+| C3 | Editable source-bound caption workflow and issue-scoped local approvals | Verified on the uncommitted feature branch — see [C3 verification](caption-handoff/C3_RELEASE_VERIFICATION.md) |
+| C4 | Frame/shot context and verified destination encoders/profiles | Planned and unimplemented — see [build packets](caption-handoff/C4_PLAN_INDEX.md) |
 | 2 | EN→ES translation pass (Claude/DeepL + glossary) filling the CSV `translation` column, with QC UI | Planned |
 | 3 | Video input (ffmpeg), optional Demucs stem separation, direct dubbing-API project creation | Planned |
 
@@ -106,7 +116,8 @@ as "create the Studio project from the app" rather than replacing the Studio.
 1. Drop the episode audio (`.mp3`) → **Run** → transcript with diarization.
 2. **⋯ → Review speakers…** — rename to character names, fix any mis-assigned cues, Save.
 3. **⋯ → Re-export…** — check **Dubbing CSV (Manual Dub)** (+ SRT/VTT with
-   *Readable subtitle timing* for delivery subs). Free, from stored history.
+   **Keep ElevenLabs timing (SRT/VTT)** when source cue boundaries are required).
+   Free, from stored history.
 4. In ElevenLabs → Dubbing Studio → **Manual Dub**: upload video (+ stems if we
    have them) + the exported CSV. Project opens with correct clips/speakers.
 5. Edit translation/performance in the Studio as usual; render dub + pull ES subtitles.

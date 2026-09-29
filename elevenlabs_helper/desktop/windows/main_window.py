@@ -46,6 +46,7 @@ from ..widgets.job_options_dialog import JobOptionsDialog
 from ..widgets.key_dialog import KeyDialog
 from ..widgets.settings_dialog import SettingsDialog
 from .history_dialog import HistoryDialog
+from .caption_qc_dialog import CaptionQCDialog, has_caption_qc
 from .speaker_qc_dialog import SpeakerQCDialog
 
 _COLUMNS = ["File", "Status", "Progress", "Size / Duration", "Actions"]
@@ -376,7 +377,12 @@ class MainWindow(QMainWindow):
             # the rarer recovery path, kept a click away in the menu.
             primary = ("Reveal", lambda: self._reveal(job))
             if job.job_type == JobType.TRANSCRIPTION:
-                menu_items = [
+                menu_items = []
+                if has_caption_qc(job):
+                    menu_items.append(
+                        ("Review captions…", lambda: self._open_caption_qc(job.id))
+                    )
+                menu_items += [
                     ("Review speakers…", lambda: self._open_speaker_qc(job.id)),
                     ("Re-export…", lambda: self._reexport(job.id)),
                     ("Remove from list", lambda: self._remove_job(job.id)),
@@ -385,8 +391,15 @@ class MainWindow(QMainWindow):
                 menu_items = [("Remove from list", lambda: self._remove_job(job.id))]
         else:  # FAILED / CANCELED
             primary = ("Retry", lambda: self.engine.queue.retry(job.id))
-            menu_items = [("Reveal", lambda: self._reveal(job)),
-                          ("Remove from list", lambda: self._remove_job(job.id))]
+            menu_items = []
+            if has_caption_qc(job):
+                menu_items.append(
+                    ("Review captions…", lambda: self._open_caption_qc(job.id))
+                )
+            menu_items += [
+                ("Reveal", lambda: self._reveal(job)),
+                ("Remove from list", lambda: self._remove_job(job.id)),
+            ]
 
         if primary:
             btn = QPushButton(primary[0])
@@ -446,6 +459,11 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 "Speaker edits saved — use Re-export to regenerate files (no API cost).", 6000
             )
+
+    def _open_caption_qc(self, job_id: str) -> None:
+        job = self.engine.store.get(job_id)
+        if job is not None:
+            CaptionQCDialog(self.engine, job, self).exec()
 
     _EDITABLE = (JobStatus.STAGED, JobStatus.QUEUED)
 

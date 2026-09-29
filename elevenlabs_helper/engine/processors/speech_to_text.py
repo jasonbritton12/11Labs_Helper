@@ -8,10 +8,15 @@ transient (let the queue retry with backoff).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
+from ..caption_jobs import apply_export_result, completion_message
+from ..captions import CaptionContext, load_caption_approvals, load_caption_overlay
+from ..config import resolve_caption_options
 from ..edits import load_edits
 from ..elevenlabs.client import TransferCanceled, transcribe_file
-from ..exporters.writer import write_deliverables
+from ..elevenlabs.models import TranscriptionResult
+from ..exporters.writer import ExportWriteError, export_deliverables
 from ..history import load_history_file, save_history
 from ..jobs.models import Job, JobStatus
 from ..media.inspect import inspect, limit_warnings
@@ -26,8 +31,66 @@ class PermanentJobError(RuntimeError):
     """A failure that should not be retried (bad input, oversize, output write, …)."""
 
 
+# Kept as a module seam for existing integrations/tests that replace the writer.
+write_deliverables = export_deliverables
+
+
+def _caption_options(job: Job, ctx: ProcessContext):
+    return (
+        job.staged_caption_options.model_copy(deep=True)
+        if job.staged_caption_options is not None
+        else resolve_caption_options(ctx.settings)
+    )
+
+
+def _caption_context(job: Job) -> CaptionContext | None:
+    if job.duration_secs is None:
+        return None
+    return CaptionContext(duration_secs=job.duration_secs)
+
+
+def _export(job: Job, ctx: ProcessContext, result, source: Path):
+    try:
+        exported = write_deliverables(
+            result,
+            job.output_dir,
+            source.stem,
+            job.deliverables,
+            edits=load_edits(job.id) if ctx.settings.keep_history_json else None,
+            overlay=load_caption_overlay(job.id) if ctx.settings.keep_history_json else None,
+            approvals=load_caption_approvals(job.id) if ctx.settings.keep_history_json else None,
+            caption_options=_caption_options(job, ctx),
+            context=_caption_context(job),
+        )
+    except ExportWriteError as exc:
+        if exc.export_result is not None:
+            apply_export_result(
+                job,
+                exc.export_result,
+                job.deliverables,
+                incomplete=True,
+            )
+            ctx.emit(job)
+        raise
+    apply_export_result(job, exported, job.deliverables)
+    return exported
+
+
 class SpeechToTextProcessor(Processor):
     feature = "speech_to_text"
+
+    def __init__(
+        self,
+        *,
+        on_result: Callable[[str, TranscriptionResult], None] | None = None,
+    ) -> None:
+        self._on_result = on_result
+
+    def _handoff_result(self, job: Job, result: TranscriptionResult) -> None:
+        """Hand a completed canonical result to the owning live engine, if any."""
+
+        if self._on_result is not None:
+            self._on_result(job.id, result)
 
     def run(self, job: Job, ctx: ProcessContext) -> None:
         source = Path(job.source_path)
@@ -45,19 +108,15 @@ class SpeechToTextProcessor(Processor):
             result = load_history_file(job.history_json)
             step(JobStatus.EXPORTING, 0.9, "Writing deliverables")
             try:
-                artifacts = write_deliverables(
-                    result, job.output_dir, source.stem, job.deliverables,
-                    edits=load_edits(job.id),
-                    readable_subtitles=ctx.settings.readable_subtitles,
-                )
+                exported = _export(job, ctx, result, source)
             except Exception as exc:  # deterministic — permanent
                 raise PermanentJobError(f"Couldn't write output to {job.output_dir}: {exc}") from exc
-            for kind, path in artifacts.items():
-                job.artifacts[kind] = str(path)
             job.status = JobStatus.DONE
             job.progress = 1.0
-            job.message = "Completed"
+            empty = not result.text.strip() and not result.words
+            job.message = completion_message(exported, empty=empty)
             job.error = None
+            self._handoff_result(job, result)
             ctx.emit(job)
             return
 
@@ -119,21 +178,16 @@ class SpeechToTextProcessor(Processor):
         # 5. Export the user-selected deliverables (disk errors are permanent).
         step(JobStatus.EXPORTING, 0.9, "Writing deliverables")
         try:
-            artifacts = write_deliverables(
-                result, job.output_dir, source.stem, job.deliverables,
-                readable_subtitles=ctx.settings.readable_subtitles,
-            )
+            exported = _export(job, ctx, result, source)
         except Exception as exc:  # export is deterministic — never re-upload/re-bill on failure
             raise PermanentJobError(
                 f"Couldn't write output to {job.output_dir}: {exc}"
             ) from exc
-        for kind, path in artifacts.items():
-            job.artifacts[kind] = str(path)
-
         job.status = JobStatus.DONE
         job.progress = 1.0
         # Distinguish a real transcript from a silent/empty result so the UI can warn.
         empty = not result.text.strip() and not result.words
-        job.message = "No speech detected" if empty else "Completed"
+        job.message = completion_message(exported, empty=empty)
         job.error = None
+        self._handoff_result(job, result)
         ctx.emit(job)

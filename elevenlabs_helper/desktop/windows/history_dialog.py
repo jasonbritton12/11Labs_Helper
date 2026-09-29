@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from ...engine.jobs.models import Job, JobStatus, JobType
 from ..reexport_action import reexport_with_prompt
+from .caption_qc_dialog import CaptionQCDialog, has_caption_qc
 
 _COLUMNS = ["File", "Date", "Status", "Actions"]
 
@@ -120,6 +121,12 @@ class HistoryDialog(QDialog):
             requeue.clicked.connect(lambda: self._requeue(job.id))
             lay.addWidget(requeue)
 
+        if has_caption_qc(job):
+            review = QPushButton("Review captions…")
+            review.setToolTip("Review the current caption document and QC report")
+            review.clicked.connect(lambda: self._review_captions(job.id))
+            lay.addWidget(review)
+
         reveal = QPushButton("Reveal")
         reveal.clicked.connect(lambda: self._reveal(job))
         lay.addWidget(reveal)
@@ -135,6 +142,11 @@ class HistoryDialog(QDialog):
         job = self.engine.store.get(job_id)
         if job is not None:
             reexport_with_prompt(self, self.engine, job)
+
+    def _review_captions(self, job_id: str) -> None:
+        job = self.engine.store.get(job_id)
+        if job is not None:
+            CaptionQCDialog(self.engine, job, self).exec()
 
     def _requeue(self, job_id: str) -> None:
         job = self.engine.store.get(job_id)

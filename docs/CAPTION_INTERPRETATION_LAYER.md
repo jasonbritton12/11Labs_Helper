@@ -1,5 +1,13 @@
 # Caption Interpretation Layer Plan
 
+*Status: packets P00–P11 for C1–C3 and the renewed independent P13 review pass
+on the uncommitted `codex/caption-rulebook` worktree as of 2026-09-29. All C4
+delivery profiles and frame/shot context remain plan-only. See the
+[C3 release verification record](caption-handoff/C3_RELEASE_VERIFICATION.md). The
+executable build packets and acceptance gates are in
+[Caption Implementation Handoff](CAPTION_IMPLEMENTATION_HANDOFF.md). That
+handoff governs details where this architecture overview is less specific.*
+
 ## Purpose
 
 Turn the stored semantic transcript into readable, delivery-ready caption events
@@ -8,9 +16,11 @@ using the house standard in
 The rulebook is the default policy for prerecorded English captions; an explicit
 destination profile may override it.
 
-The current `readability.retime()` transform is a useful Phase-1 baseline, but it
-only adjusts duration, reading speed, gaps, and a narrow same-speaker merge case.
-The interpretation layer must also own event segmentation, authored line breaks,
+The house rulebook is the governing authoring policy. Other readability advice
+may rank choices only within its parameters; it cannot silently relax the rules.
+
+The legacy `readability.retime()` transform remains a Phase-1 compatibility
+baseline. The interpretation layer now owns event segmentation, authored line breaks,
 QC severity, glyph compatibility, speaker-change treatment, and any frame- or
 edit-aware timing adjustments.
 
@@ -39,6 +49,16 @@ must never rewrite the history JSON or speaker-edit overlay. Manual-Dub CSV
 generation stays outside this layer so subtitle authoring cannot change dubbing
 clip boundaries.
 
+Both caption timing modes use this layer. In `house` mode it authors segmentation,
+lines, and timing. In `source` mode it keeps the existing canonical cue count,
+starts, and ends derived from ElevenLabs word timestamps, authors only line
+breaks, and reports any rule violations. Source mode never splits or merges cues
+or silently retimes them to obtain a pass.
+
+Settings exposes **Keep ElevenLabs timing (SRT/VTT)**. Fresh installs default
+to house mode; existing saved choices migrate explicitly. Jobs capture their
+options when staged, and Re-export offers an explicit per-export override.
+
 ## Proposed model
 
 - `CaptionProfile`: versioned rules and destination overrides, including line
@@ -52,7 +72,7 @@ clip boundaries.
 - `CaptionDocument`: ordered interpreted events plus profile/rule version and
   provenance. Renderers consume this instead of deciding line breaks themselves.
 - `CaptionQCIssue`: rule ID, severity (`info`, `warning`, `failure`, or
-  `approval_required`), event/source reference, measured value, threshold, and
+  `blocker`), event/source reference, measured value, threshold, and
   suggested resolution.
 - `CaptionQCReport`: aggregate pass/warn/fail result and a machine-readable list
   suitable for the GUI, CLI, logs, or a future sidecar report.
@@ -96,26 +116,31 @@ failure or approval-required issue. Do not hide the exception.
 
 ## Delivery phases
 
-### C1 — Foundation and compatibility
+### C1 — Foundation and compatibility — implemented on feature branch
 
 - Add the models, versioned house profile, destination-override resolution, and
   structured QC report.
-- Preserve the existing `readable_subtitles` setting by mapping `True` to the
-  house profile; introduce a future `caption_profile` setting without breaking
-  saved settings.
-- Route SRT/VTT through `CaptionDocument` only when readable output is selected.
-- Keep the current raw subtitle path available until parity fixtures pass.
+- Migrate `readable_subtitles=True` to `caption_timing_mode="house"` and `False`
+  to `"source"`; persist the new timing enum and `caption_profile_id`. Keep an
+  explicit legacy API adapter during transition, not two competing booleans.
+- Add the Settings control, job option snapshots, and explicit re-export/CLI
+  overrides described in the handoff.
+- Route both SRT/VTT modes through one `CaptionDocument` and QC report. In source
+  mode, preserve canonical cue boundaries and report unresolved timing/density
+  exceptions. Keep legacy renderer entry points only as compatibility adapters.
 
-### C2 — Deterministic authoring rules
+### C2 — Deterministic authoring rules — verified on feature branch
 
 - Replace the 84-character cue heuristic for readable outputs with event
   segmentation and explicit 32-by-2 line composition.
 - Implement CPS warning/failure bands, 1–7 second duration bounds, overlap/gap
   handling, speaker-change constraints, and source-trace preservation.
-- Add destination-aware glyph validation, including a 608-compatible profile.
+- Validate displayed glyph membership against the pinned libcaption CEA-608
+  repertoire and report every miss. This is a repertoire check only; it does
+  not generate 608 bytes or establish delivery/player compliance.
 - Produce a CLI-readable and machine-readable QC report.
 
-### C3 — Review workflow
+### C3 — Review workflow — verified on feature branch
 
 - Add a caption preview/QC surface showing authored lines, timing, CPS, warnings,
   failures, and the originating transcript range.
@@ -156,8 +181,11 @@ failure or approval-required issue. Do not hide the exception.
 
 ## Exit criteria
 
-C1–C2 are complete when readable SRT/VTT exports deterministically apply the
-versioned house profile, explicitly author their lines, emit structured QC, and
-preserve the Manual-Dub timing invariant. C3 is required before claiming an
-editorially complete workflow. C4 capabilities are claimed only for destination
+C1–C3 are complete on this feature branch: house-mode SRT/VTT exports deterministically apply the
+versioned profile, source mode preserves its cue timing/count ledger, both modes
+explicitly author lines and emit visible structured QC, and all preserve the
+Manual-Dub timing invariant. Glyph evidence and editorial coverage must be
+explicit, with no unsupported compliance claim. The C3 workflow adds source-bound
+caption-only edits and issue-scoped local approvals without changing the canonical
+transcript or Manual-Dub timing. C4 capabilities are claimed only for destination
 formats and context inputs that have their own verified profiles and fixtures.

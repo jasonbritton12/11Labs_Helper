@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator, model_validator
+
+from .captions import CaptionExportOptions, CaptionTimingMode, get_caption_profile
 
 # --- ElevenLabs Scribe hard limits (verified June 2026) ----------------------
 ELEVENLABS_MAX_FILE_BYTES: int = 5 * 1024**3        # 5 GB
@@ -54,7 +58,10 @@ DEFAULT_STT_MODEL = "scribe_v2"
 
 def app_support_dir() -> Path:
     """Per-user app data directory (config + SQLite db). macOS-first, with fallbacks."""
-    if sys.platform == "darwin":
+    explicit = os.environ.get("ELEVENLABS_HELPER_DATA_DIR")
+    if explicit:
+        base = Path(explicit).expanduser()
+    elif sys.platform == "darwin":
         base = Path.home() / "Library" / "Application Support" / APP_NAME
     elif os.name == "nt":  # pragma: no cover - not a target platform yet
         base = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
@@ -104,26 +111,137 @@ class EngineSettings(BaseModel):
     # Auto-delete history JSONs older than N days (0 = keep forever). Data-minimization
     # option for privacy-sensitive users (SSR-011).
     history_retention_days: int = 0
-    # Re-time SRT/VTT cues for reading comfort (min duration / max chars-per-second)
-    # instead of raw waveform alignment. The Dubbing CSV always keeps waveform timing.
-    readable_subtitles: bool = False
+    # Caption defaults. ``readable_subtitles`` below remains a compatibility property
+    # for callers that have not moved to the explicit timing enum yet.
+    caption_timing_mode: CaptionTimingMode = CaptionTimingMode.HOUSE
+    caption_profile_id: str = "house-english-v1"
     max_retries: int = 4
     retry_base_delay_secs: float = 2.0
+
+    _load_warning: str | None = PrivateAttr(default=None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _adapt_legacy_constructor_values(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        if "caption_timing_mode" not in data and "readable_subtitles" in data:
+            data["caption_timing_mode"] = (
+                CaptionTimingMode.HOUSE.value
+                if data["readable_subtitles"]
+                else CaptionTimingMode.SOURCE.value
+            )
+        data.pop("readable_subtitles", None)
+        return data
+
+    @property
+    def readable_subtitles(self) -> bool:
+        """Deprecated compatibility view of the explicit caption timing mode."""
+        return self.caption_timing_mode == CaptionTimingMode.HOUSE
+
+    @readable_subtitles.setter
+    def readable_subtitles(self, value: bool) -> None:
+        self.caption_timing_mode = (
+            CaptionTimingMode.HOUSE if value else CaptionTimingMode.SOURCE
+        )
+
+    @property
+    def load_warning(self) -> str | None:
+        """Diagnostic from the most recent load, excluded from persisted settings."""
+        return self._load_warning
 
     # --- persistence ---------------------------------------------------------
     @classmethod
     def load(cls) -> "EngineSettings":
         path = _config_path()
-        if path.exists():
-            try:
-                return cls.model_validate_json(path.read_text())
-            except Exception:
-                # Corrupt settings should never block startup; fall back to defaults.
-                return cls()
-        return cls()
+        if not path.exists():
+            return cls()
+        try:
+            import json
+
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                raise ValueError("settings root must be an object")
+            payload = dict(raw)
+            has_new_mode = "caption_timing_mode" in payload
+            has_new_profile = "caption_profile_id" in payload
+            if not has_new_mode:
+                if "readable_subtitles" in payload:
+                    payload["caption_timing_mode"] = (
+                        CaptionTimingMode.HOUSE.value
+                        if payload["readable_subtitles"]
+                        else CaptionTimingMode.SOURCE.value
+                    )
+                else:
+                    # Preserve the old saved default when neither field exists.
+                    payload["caption_timing_mode"] = CaptionTimingMode.SOURCE.value
+            if not has_new_profile:
+                payload["caption_profile_id"] = "house-english-v1"
+            settings = cls.model_validate(payload)
+            get_caption_profile(settings.caption_profile_id)
+            if not has_new_mode or not has_new_profile or "readable_subtitles" in raw:
+                settings._load_warning = "Legacy caption settings were migrated in memory."
+            return settings
+        except Exception as exc:
+            # Corrupt or invalid settings should never block startup; retain a
+            # diagnostic without rewriting the user's file during a read.
+            settings = cls()
+            settings._load_warning = f"Settings could not be loaded; defaults were used ({exc})."
+            return settings
 
     def save(self) -> None:
-        _config_path().write_text(self.model_dump_json(indent=2))
+        path = _config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary: Path | None = None
+        try:
+            fd, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+            temporary = Path(name)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(self.model_dump_json(indent=2))
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            temporary = None
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+
+def resolve_caption_options(
+    settings: EngineSettings,
+    *,
+    explicit: CaptionExportOptions | dict[str, Any] | None = None,
+    legacy_readable: bool | None = None,
+) -> CaptionExportOptions:
+    """Resolve one immutable caption option snapshot using documented precedence."""
+    if explicit is not None:
+        options = (
+            explicit
+            if isinstance(explicit, CaptionExportOptions)
+            else CaptionExportOptions.model_validate(explicit)
+        )
+        if legacy_readable is not None:
+            legacy_mode = CaptionTimingMode.HOUSE if legacy_readable else CaptionTimingMode.SOURCE
+            if options.timing_mode != legacy_mode:
+                raise ValueError(
+                    "caption timing options disagree: explicit timing_mode and "
+                    "legacy readable_subtitles must resolve to the same mode"
+                )
+        get_caption_profile(options.profile_id, options.profile_version)
+        return options.model_copy(deep=True)
+
+    mode = (
+        CaptionTimingMode.HOUSE if legacy_readable
+        else CaptionTimingMode.SOURCE if legacy_readable is not None
+        else settings.caption_timing_mode
+    )
+    profile = get_caption_profile(settings.caption_profile_id)
+    return CaptionExportOptions(
+        timing_mode=mode,
+        profile_id=profile.profile_id,
+        profile_version=profile.profile_version,
+    )
 
 
 def output_dir_for(source: Path, settings: EngineSettings) -> Path:

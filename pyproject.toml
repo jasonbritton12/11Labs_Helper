@@ -38,11 +38,16 @@ packages = [
     "elevenlabs_helper.engine.elevenlabs",
     "elevenlabs_helper.engine.processors",
     "elevenlabs_helper.engine.exporters",
+    "elevenlabs_helper.engine.captions",
+    "elevenlabs_helper.engine.captions.data",
     "elevenlabs_helper.engine.jobs",
     "elevenlabs_helper.desktop",
     "elevenlabs_helper.desktop.windows",
     "elevenlabs_helper.desktop.widgets",
 ]
+
+[tool.setuptools.package-data]
+"elevenlabs_helper.engine.captions" = ["data/*.json"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

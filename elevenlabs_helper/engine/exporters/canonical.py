@@ -29,6 +29,9 @@ class Cue:
     text: str
     speaker_id: str | None = None
     is_audio_event: bool = False  # cue is entirely non-speech (e.g. "(music)")
+    # Original ``TranscriptionResult.words`` positions consumed by this cue.
+    # Kept defaulted for external callers that construct legacy Cues by hand.
+    source_word_indices: tuple[int, ...] = ()
 
 
 @dataclass
@@ -102,40 +105,44 @@ def _token_text(w: Word) -> str:
 
 
 def build_transcript(result: TranscriptionResult) -> Transcript:
+    # Keep indices from the unfiltered response.  In particular, spacing tokens
+    # and untimed words must not make later source references drift.
     tokens = [
-        w for w in result.words
+        (source_word_index, w)
+        for source_word_index, w in enumerate(result.words)
         if w.type in ("word", "audio_event") and w.start is not None and w.end is not None
     ]
-    speakers = {w.speaker_id for w in tokens if w.speaker_id}
+    speakers = {w.speaker_id for _, w in tokens if w.speaker_id}
     multi = len(speakers) > 1
 
     cues: list[Cue] = []
-    cur: list[Word] = []
+    cur: list[tuple[int, Word]] = []
     cur_len = 0  # running character length of the current cue (avoids O(n^2) rejoins)
 
     def flush() -> None:
         if not cur:
             return
-        text = " ".join(_token_text(w) for w in cur)
+        text = " ".join(_token_text(w) for _, w in cur)
         text = " ".join(text.split())  # collapse whitespace
         cues.append(
             Cue(
                 index=len(cues) + 1,
-                start=cur[0].start,
-                end=cur[-1].end,
+                start=cur[0][1].start,
+                end=cur[-1][1].end,
                 text=text,
-                speaker_id=cur[0].speaker_id,
-                is_audio_event=all(w.type == "audio_event" for w in cur),
+                speaker_id=cur[0][1].speaker_id,
+                is_audio_event=all(w.type == "audio_event" for _, w in cur),
+                source_word_indices=tuple(source_word_index for source_word_index, _ in cur),
             )
         )
 
-    for w in tokens:
+    for source_word_index, w in tokens:
         if cur:
-            prev = cur[-1]
+            _, prev = cur[-1]
             split = (
                 w.speaker_id != prev.speaker_id
                 or (w.start - prev.end) > _GAP_SPLIT_SECS
-                or (w.end - cur[0].start) > _MAX_CUE_SECS
+                or (w.end - cur[0][1].start) > _MAX_CUE_SECS
                 or cur_len >= _MAX_CUE_CHARS
                 or (_token_text(prev).rstrip().endswith(_SENTENCE_END) and cur_len > 30)
             )
@@ -143,11 +150,11 @@ def build_transcript(result: TranscriptionResult) -> Transcript:
                 flush()
                 cur = []
                 cur_len = 0
-        cur.append(w)
+        cur.append((source_word_index, w))
         cur_len += len(_token_text(w)) + 1
     flush()
 
-    full_text = result.text or " ".join(_token_text(w) for w in tokens)
+    full_text = result.text or " ".join(_token_text(w) for _, w in tokens)
     return Transcript(
         cues=cues,
         full_text=full_text.strip(),

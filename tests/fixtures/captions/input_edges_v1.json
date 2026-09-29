@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "fixture_set": "caption-input-edges",
+  "cases": [
+    {"id": "speaker_change_at_32", "text": "12345678901234567890123456789012", "speaker_id": "speaker_1", "expected": {"notation": "- ", "capacity_includes_notation": true}},
+    {"id": "speaker_rename_reassignment", "speaker_edits": {"speaker_names": {"speaker_0": "MARIA"}, "cue_overrides": {"2": "speaker_0"}}, "expected": {"csv_timing_unchanged": true}},
+    {"id": "glyphs", "text": "Café “hello” — ♪ 😀 é", "expected": {"preserve_codepoints": true, "requires_repertoire_check": true}},
+    {"id": "english", "language": "eng", "expected": {"scope": "verified_english"}},
+    {"id": "spanish", "language": "spa", "expected": {"scope": "coverage_must_be_reported"}},
+    {"id": "unknown_language", "language": null, "expected": {"scope": "unknown"}},
+    {"id": "untimed_dialogue", "words": [{"text": "hello", "start": null, "end": null, "type": "word"}], "expected": {"finding": "untimed_source_content"}},
+    {"id": "malformed_timestamps", "words": [{"text": "hello", "start": "bad", "end": 1.0, "type": "word"}], "expected": {"finding": "malformed_source_data"}},
+    {"id": "sub_ms_rounding", "start": 0.0004, "end": 0.0006, "expected": {"rendered_milliseconds": [0, 1], "must_revalidate": true}},
+    {"id": "no_context", "context": {"program_duration_secs": null, "frame_rate": null, "shot_changes": null}, "expected": {"coverage": "not_evaluated"}}
+  ]
+}

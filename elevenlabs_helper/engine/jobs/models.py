@@ -5,10 +5,12 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 from ..config import Deliverable, TranscriptionParams
+from ..captions import CaptionExportOptions
 
 
 class JobType(str, Enum):
@@ -62,6 +64,12 @@ class Job(BaseModel):
     artifacts: dict[str, str] = Field(default_factory=dict)  # type -> path
     history_json: str | None = None  # app-space canonical JSON path (for re-export)
     archived: bool = False  # hidden from the main queue list but kept for re-export
+
+    # Optional caption metadata keeps persisted Job JSON backward-compatible.
+    staged_caption_options: CaptionExportOptions | None = None
+    latest_caption_options: CaptionExportOptions | None = None
+    caption_qc_summary: dict[str, Any] | None = None
+    latest_caption_batch: dict[str, Any] | None = None
 
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)

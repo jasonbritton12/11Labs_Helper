@@ -1,6 +1,6 @@
 # ElevenLabs Helper — Project Handoff
 
-*Last updated: 2026-09-09. Written for an engineer (or a future session) picking
+*Last updated: 2026-09-18. Written for an engineer (or a future session) picking
 this project up cold. Pair this with [ROADMAP.md](../ROADMAP.md) for forward work
 and [DUBBING_WORKFLOW.md](DUBBING_WORKFLOW.md) for the dubbing strategy.*
 
@@ -27,11 +27,18 @@ English→Spanish dubbing — plus the experimental dialog-isolation utility.
 
 | | |
 |---|---|
-| **Current branch** | `codex/voice-isolation-me` (based on `dubbing-workflow` at `2bd5cff`) |
-| **Main branch** | `main` (HEAD `34da1f4`) |
+| **Current branch** | `codex/caption-rulebook` (uncommitted implementation based on `main` at `ec777c7`) |
+| **Feature ancestry** | Includes `dubbing-workflow` at `2bd5cff` and the Voice Isolation commits |
 | **Feature status** | Voice Isolation retained as an experimental Tools-menu utility |
-| **Tests** | 96 passing, 2 opt-in live API checks skipped by default |
-| **Not yet on main** | dubbing-workflow changes plus the experimental Voice Isolation utility |
+| **Tests** | 256 non-live tests pass; wheel install and frozen-app launch smoke pass |
+| **Caption status** | P00–P11 and renewed independent P13 review pass on the uncommitted branch. C4 delivery profiles remain plan-only |
+
+Caption implementation contract and remaining entry point:
+[Caption Implementation Handoff](CAPTION_IMPLEMENTATION_HANDOFF.md). It defines
+the governing rulebook, saved source/house timing modes, migration, model
+contracts, small build packets, QC behavior, and milestone gates.
+Verification evidence:
+[Caption C3 Release Verification](caption-handoff/C3_RELEASE_VERIFICATION.md).
 
 User acceptance confirmed that Voice Isolation produces a useful dialog-only
 reference, but not a signal that can be inverted against the source to recover
@@ -214,26 +221,30 @@ team keeps the Studio as the editing surface (they want that editorial control).
   (`speaker,start_time,end_time,transcription,translation`). Dialogue-only,
   **waveform-aligned** timing, seconds timecodes (chosen over `HH:MM:SS,mmm` to
   avoid comma-quoting against a strict parser), empty translation column.
-- `engine/exporters/readability.py` — `retime(transcript)` relaxes SRT/VTT display
-  timing for reading comfort (min 1s, ≤17 chars/sec, merge tiny same-speaker
-  fragments, ~2-frame gaps). Pure transform; input transcript untouched.
-- `Deliverable.DUB_CSV` + `EngineSettings.readable_subtitles` flag.
+- `engine/captions/` — versioned source linkage, 32×2 composition, source/house
+  timing, pinned glyph evidence, QC models, and deterministic interpretation.
+- `engine/exporters/readability.py` — retained only for compatibility; current
+  SRT/VTT paths render the shared `CaptionDocument`.
+- `Deliverable.DUB_CSV` + `EngineSettings.caption_timing_mode`, with the old
+  `readable_subtitles` property retained as an adapter.
 - `Engine.get_transcript()`, `get_speaker_edits()`, `save_speaker_edits()`;
-  `reexport()` and the processor now apply edits + optional readable re-timing.
+  `reexport()` and the processor apply edits plus a captured caption option
+  snapshot and write document/QC sidecars with every caption batch.
   `delete_permanently()` also discards the overlay.
 
 **New GUI pieces:**
 - `desktop/windows/speaker_qc_dialog.py` — a finished job's **⋯ → Review
   speakers…** opens a cue table with per-cue speaker dropdowns + per-speaker
   rename fields. Save writes the overlay; re-export reflects it.
-- `reexport_dialog.py` gained the DUB_CSV deliverable + a "Readable subtitle
-  timing" checkbox.
+- Settings, job options, and `reexport_dialog.py` expose **Keep ElevenLabs timing
+  (SRT/VTT)**. Unchecked selects rulebook-authored house timing.
 
-**Tests added (20):** `test_dub_csv.py`, `test_speaker_edits.py`,
-`test_readability.py`.
+Caption tests cover contracts, source linkage, composition, timing, glyphs,
+renderers, writer batches, Settings migration/UI, re-export, CLI behavior,
+source-bound editorial overlays, approvals, and retention lifecycle.
 
 **Design invariant to preserve:** the **Dubbing CSV always keeps waveform-aligned
-timing**; only SRT/VTT get the readable variant. Tests enforce this — don't break it.
+timing**; only SRT/VTT pass through caption interpretation. Tests enforce this.
 
 ---
 
@@ -264,7 +275,8 @@ subscription credits or API dollars — it changes the optimization math.
 2. **Real-world validate the CSV**: upload a generated `.csv` + video via Dubbing
    Studio → Manual Dub and confirm the project opens with correct clips/speakers.
    This is the one thing not covered by automated tests (strict-parser behavior).
-3. **Merge decision** for the feature line → `main` (owner's call).
+3. **Implement caption C4** from the reviewed narrow plans: shared frame/shot and
+   destination-policy foundations, then independently verified destination exporters.
 4. **Bump both the pyproject version and packaged app version** for the next release.
 
 **Phase 2 (planned):** external EN→ES translation pass (Claude API or DeepL +

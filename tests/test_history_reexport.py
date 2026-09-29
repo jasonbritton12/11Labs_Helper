@@ -98,7 +98,7 @@ def test_reexport_empty_formats_falls_back_to_job_defaults(tmp_path, dummy_mp3, 
     (Path(job.output_dir) / "sample.srt").unlink()
     engine = Engine(settings=settings, store=store, base_url=mock_elevenlabs.base_url)
     arts = engine.reexport(job.id, deliverables=[])   # empty -> use the job's formats
-    assert set(arts) == {"srt", "vtt"}
+    assert set(arts) == {"srt", "vtt", "caption_document", "caption_qc"}
     store.close()
 
 

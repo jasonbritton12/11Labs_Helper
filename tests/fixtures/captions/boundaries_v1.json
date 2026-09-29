@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "fixture_set": "caption-boundaries",
+  "profile_id": "house-english-v1",
+  "limits": {"line_chars": 32, "max_lines": 2, "event_chars": 64, "cps_warning": 17.0, "cps_failure": 20.0, "min_duration": 1.0, "max_duration": 7.0},
+  "cases": [
+    {"id": "line_32", "text": "12345678901234567890123456789012", "expected": {"characters": 32, "lines": 1, "status": "boundary"}},
+    {"id": "line_33", "text": "123456789012345678901234567890123", "expected": {"characters": 33, "lines": 2, "status": "requires_break_or_finding"}},
+    {"id": "event_64", "text": "1234567890123456789012345678901212345678901234567890123456789012", "expected": {"characters": 64, "lines": 2, "status": "boundary"}},
+    {"id": "event_65", "text": "12345678901234567890123456789012123456789012345678901234567890123", "expected": {"characters": 65, "lines": 3, "status": "capacity_failure"}},
+    {"id": "cps_17", "duration": 1.0, "expected": {"cps": 17.0, "severity": "pass_or_warning_boundary"}},
+    {"id": "cps_just_above_17", "duration": 0.999, "expected": {"cps": 17.017017017017018, "severity": "warning"}},
+    {"id": "cps_20", "duration": 0.85, "expected": {"cps": 20.0, "severity": "warning_or_failure_boundary"}},
+    {"id": "cps_above_20", "duration": 0.849, "expected": {"cps": 20.023557126030625, "severity": "failure"}},
+    {"id": "duration_0_999", "duration": 0.999, "expected": {"severity": "failure"}},
+    {"id": "duration_1", "duration": 1.0, "expected": {"severity": "pass"}},
+    {"id": "duration_7", "duration": 7.0, "expected": {"severity": "pass"}},
+    {"id": "duration_7_001", "duration": 7.001, "expected": {"severity": "failure"}}
+  ]
+}

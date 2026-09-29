@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "fixture_set": "caption-baseline",
+  "profile_id": "house-english-v1",
+  "modes": ["source", "house"],
+  "cases": [
+    {
+      "id": "canned_two_speakers",
+      "mode": "source",
+      "profile": "house-english-v1",
+      "context": {"program_duration_secs": 3.6, "language": "eng"},
+      "result": {
+        "language_code": "eng",
+        "language_probability": 0.99,
+        "audio_duration_secs": 3.6,
+        "text": "Hello world. How are you?",
+        "words": [
+          {"text": "Hello", "start": 0.0, "end": 0.5, "type": "word", "speaker_id": "speaker_0"},
+          {"text": "world.", "start": 0.6, "end": 1.0, "type": "word", "speaker_id": "speaker_0"},
+          {"text": "How", "start": 2.5, "end": 2.8, "type": "word", "speaker_id": "speaker_1"},
+          {"text": "are", "start": 2.9, "end": 3.1, "type": "word", "speaker_id": "speaker_1"},
+          {"text": "you?", "start": 3.2, "end": 3.6, "type": "word", "speaker_id": "speaker_1"}
+        ]
+      },
+      "speaker_edits": {"speaker_names": {"speaker_0": "MARIA"}, "cue_overrides": {}},
+      "expected_cues": [
+        {"index": 1, "start": 0.0, "end": 1.0, "text": "Hello world.", "speaker_id": "speaker_0", "is_audio_event": false},
+        {"index": 2, "start": 2.5, "end": 3.6, "text": "How are you?", "speaker_id": "speaker_1", "is_audio_event": false}
+      ],
+      "expected_exports": {
+        "manual_dub_csv": {"bytes": 126, "sha256": "a5aaae89ecfa6b019e3eabdb7b517703e51517738538c5ffd9018c4e70f1e80e"},
+        "srt": {"bytes": 93, "sha256": "42fe2c4d99cf8a1dcbe30738c75bda87651c43fc6a61705f2cda6cdd09beb409"},
+        "vtt": {"bytes": 160, "sha256": "351eee4cff6a210a0a90eff0798b54c2d9d7db2760e9d2b0614ec94ea7d0e8f9"}
+      }
+    },
+    {
+      "id": "rapid_50_character_reply",
+      "mode": "source",
+      "profile": "house-english-v1",
+      "context": {"program_duration_secs": 0.7, "language": "eng"},
+      "result": {
+        "text": "12345678901234567890123456789012345678901234567890 reply",
+        "words": [
+          {"text": "12345678901234567890123456789012345678901234567890", "start": 0.0, "end": 0.5, "type": "word", "speaker_id": "speaker_0"},
+          {"text": "reply", "start": 0.6, "end": 0.7, "type": "word", "speaker_id": "speaker_1"}
+        ]
+      },
+      "expected_cues": [
+        {"index": 1, "start": 0.0, "end": 0.5, "text": "12345678901234567890123456789012345678901234567890", "speaker_id": "speaker_0", "is_audio_event": false},
+        {"index": 2, "start": 0.6, "end": 0.7, "text": "reply", "speaker_id": "speaker_1", "is_audio_event": false}
+      ],
+      "expected_exports": {
+        "manual_dub_csv": {"bytes": 157, "sha256": "f56fc3d33daf03a701ab9ee9e9333de815fa6ea5db83e5804d19e5e270b572d4"}
+      },
+      "expected_current_readability": {"first_end": 0.517, "first_cps": 96.71179883945841, "second_end": 1.6},
+      "expected_findings": ["density_over_32", "duration_below_1", "cps_over_20", "speaker_notation_changes_capacity"]
+    },
+    {
+      "id": "audio_event_does_not_change_returning_speaker",
+      "mode": "source",
+      "profile": "house-english-v1",
+      "context": {"program_duration_secs": 5.4, "language": "eng"},
+      "result": {
+        "text": "Hi there (music) bye",
+        "words": [
+          {"text": "Hi", "start": 0.0, "end": 0.4, "type": "word", "speaker_id": "speaker_0"},
+          {"text": "there", "start": 0.5, "end": 0.9, "type": "word", "speaker_id": "speaker_0"},
+          {"text": "[music]", "start": 2.0, "end": 4.0, "type": "audio_event", "speaker_id": "speaker_1"},
+          {"text": "bye", "start": 5.0, "end": 5.4, "type": "word", "speaker_id": "speaker_0"}
+        ]
+      },
+      "expected_cues": [
+        {"index": 1, "start": 0.0, "end": 0.9, "text": "Hi there", "speaker_id": "speaker_0", "is_audio_event": false},
+        {"index": 2, "start": 2.0, "end": 4.0, "text": "(music)", "speaker_id": "speaker_1", "is_audio_event": true},
+        {"index": 3, "start": 5.0, "end": 5.4, "text": "bye", "speaker_id": "speaker_0", "is_audio_event": false}
+      ],
+      "expected_exports": {"manual_dub_csv": {"bytes": 113, "sha256": "f8ab695a3916ea23bc17a50d3be0baa421043fb9e14f46f264c62e34bed921d7"}}
+    },
+    {
+      "id": "non_monotone_word_ends",
+      "mode": "house",
+      "profile": "house-english-v1",
+      "context": {"program_duration_secs": 2.0, "language": "eng"},
+      "result": {
+        "text": "early late",
+        "words": [
+          {"text": "early", "start": 0.0, "end": 2.0, "type": "word", "speaker_id": "speaker_0"},
+          {"text": "late", "start": 0.5, "end": 0.6, "type": "word", "speaker_id": "speaker_0"}
+        ]
+      },
+      "expected_cues": [{"index": 1, "start": 0.0, "end": 0.6, "text": "early late", "speaker_id": "speaker_0", "is_audio_event": false}],
+      "expected_findings": ["source_end_is_not_maximum_associated_word_end"]
+    },
+    {
+      "id": "empty_result",
+      "mode": "house",
+      "profile": "house-english-v1",
+      "context": {"program_duration_secs": 1.0, "language": null},
+      "result": {"text": "", "words": []},
+      "expected_cues": [],
+      "expected_findings": ["no_speech_detected"]
+    }
+  ]
+}

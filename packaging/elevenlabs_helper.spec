@@ -20,6 +20,7 @@ binaries = []
 # python-docx ships a default template + XML parts as package data; PyInstaller
 # won't pick them up automatically, and Document() fails at runtime without them.
 datas = collect_data_files("docx")
+datas += collect_data_files("elevenlabs_helper.engine.captions")
 
 target_arch = os.environ.get("TARGET_ARCH") or None  # e.g. "universal2"
 

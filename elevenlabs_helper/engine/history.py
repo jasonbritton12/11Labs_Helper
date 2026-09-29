@@ -10,11 +10,14 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from .config import app_support_dir
 from .elevenlabs.models import TranscriptionResult
 
 
 def history_dir() -> Path:
+    # Resolve lazily because caption sidecars import this module while the
+    # settings module itself imports the caption contracts.
+    from .config import app_support_dir
+
     d = app_support_dir() / "history"
     d.mkdir(parents=True, exist_ok=True)
     return d
@@ -46,17 +49,71 @@ def delete_history(job_id: str) -> None:
     history_path(job_id).unlink(missing_ok=True)
 
 
-def prune_history(days: int) -> int:
-    """Delete history JSONs older than ``days`` (by mtime). No-op if days<=0. Returns count."""
-    if days <= 0:
-        return 0
-    cutoff = time.time() - days * 86400
-    removed = 0
-    for f in history_dir().glob("*.json"):
-        try:
-            if f.stat().st_mtime < cutoff:
-                f.unlink()
-                removed += 1
-        except OSError:
-            pass
+_PRIVATE_RECORD_SUFFIXES = (
+    ".edits.json",
+    ".caption-overlay.json",
+    ".caption-approvals.json",
+)
+
+
+def delete_private_records(job_id: str) -> None:
+    """Delete only app-managed records associated with one canonical history ID."""
+
+    # Kept local to avoid the captions/history import cycle.
+    from .edits import delete_edits
+    from .captions.overlays import delete_caption_approvals, delete_caption_overlay
+
+    delete_edits(job_id)
+    delete_caption_overlay(job_id)
+    delete_caption_approvals(job_id)
+
+
+def delete_history_group(job_id: str) -> None:
+    """Remove a canonical input and every managed private companion record."""
+
+    delete_history(job_id)
+    delete_private_records(job_id)
+
+
+def _canonical_history_files() -> list[Path]:
+    return [
+        path
+        for path in history_dir().glob("*.json")
+        if not path.name.endswith(_PRIVATE_RECORD_SUFFIXES)
+    ]
+
+
+def prune_history_groups(days: int) -> set[str]:
+    """Prune aged managed history as job groups and remove managed orphans.
+
+    This deliberately scans only the app-private history directory and the three
+    exact private-record suffixes.  User output JSON and caption sidecars are
+    never discovered or removed here.
+    """
+
+    removed: set[str] = set()
+    if days > 0:
+        cutoff = time.time() - days * 86400
+        for path in _canonical_history_files():
+            try:
+                if path.stat().st_mtime < cutoff:
+                    job_id = path.name[:-5]
+                    delete_history_group(job_id)
+                    removed.add(job_id)
+            except OSError:
+                pass
+    for suffix in _PRIVATE_RECORD_SUFFIXES:
+        for path in history_dir().glob(f"*{suffix}"):
+            job_id = path.name[: -len(suffix)]
+            if not history_path(job_id).exists():
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
     return removed
+
+
+def prune_history(days: int) -> int:
+    """Backward-compatible count of aged canonical history groups removed."""
+
+    return len(prune_history_groups(days))
